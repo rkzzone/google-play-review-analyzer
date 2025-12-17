@@ -144,27 +144,37 @@ if st.session_state.reviews_df is None:
         st.markdown("---")
         st.subheader("2️⃣ Select App from Results")
         
-        # Display all results as cards
+        # Display all results as cards in a single row
+        cols = st.columns(len(st.session_state.search_results))
+        
         for idx, app in enumerate(st.session_state.search_results):
-            with st.container():
-                col1, col2, col3 = st.columns([1, 5, 2])
-                
-                with col1:
+            with cols[idx]:
+                # Card container with styling
+                with st.container():
+                    # App icon
                     if app.get('icon'):
-                        st.image(app['icon'], width=80)
-                
-                with col2:
-                    st.markdown(f"### {app['title']}")
-                    st.caption(f"👨‍💻 {app.get('developer', 'Unknown Developer')}")
-                    st.caption(f"⭐ Rating: {app.get('score', 'N/A')} | 📦 ID: `{app.get('appId', 'N/A')}`")
-                
-                with col3:
-                    if st.button(f"Select", key=f"select_{idx}", use_container_width=True):
+                        st.image(app['icon'], use_column_width=True)
+                    else:
+                        st.markdown("📱")
+                    
+                    # App title (truncated if too long)
+                    title = app['title']
+                    display_title = title if len(title) <= 20 else title[:17] + "..."
+                    st.markdown(f"**{display_title}**")
+                    
+                    # Rating
+                    st.caption(f"⭐ {app.get('score', 'N/A')}")
+                    
+                    # Developer (truncated)
+                    dev = app.get('developer', 'Unknown')
+                    display_dev = dev if len(dev) <= 15 else dev[:12] + "..."
+                    st.caption(f"👨‍💻 {display_dev}")
+                    
+                    # Select button
+                    if st.button("Select", key=f"select_{idx}", use_column_width=True, type="primary"):
                         st.session_state.selected_app = app
-                        st.success(f"✅ Selected: {app['title']}")
+                        st.success(f"✅ {app['title']}")
                         st.rerun()
-                
-                st.markdown("---")
     
     # Scraping Configuration (after app selected)
     if st.session_state.selected_app:

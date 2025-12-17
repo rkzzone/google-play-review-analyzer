@@ -41,7 +41,7 @@ def search_app_by_name(app_name, lang='en', country='us'):
             app_name,
             lang=lang,
             country=country,
-            n_hits=5
+            n_hits=10  # Get more results to filter
         )
         
         if results:
@@ -57,7 +57,19 @@ def search_app_by_name(app_name, lang='en', country='us'):
                     'score': r.get('score', 0),
                     'developer': r.get('developer', '')
                 })
-            return formatted_results
+            
+            # Prioritize exact or close matches
+            app_name_lower = app_name.lower()
+            exact_matches = [r for r in formatted_results if app_name_lower in r['title'].lower()]
+            
+            # If we have exact matches, prioritize them
+            if exact_matches:
+                # Combine: exact matches first, then others
+                other_matches = [r for r in formatted_results if r not in exact_matches]
+                formatted_results = exact_matches[:3] + other_matches[:3]
+            
+            # Return top 6
+            return formatted_results[:6]
         return []
     except Exception as e:
         st.error(f"Error searching for app: {str(e)}")
