@@ -122,7 +122,7 @@ if st.session_state.reviews_df is None:
         # Input tunggal yang menangani segala jenis input
         query = st.text_input(
             "Cari Aplikasi",
-            placeholder="Nama aplikasi, Link Play Store, atau App ID (com.instagram.android)...",
+            placeholder="Nama aplikasi atau Link Play Store",
             label_visibility="collapsed",
             key="app_search_query"
         )
@@ -148,9 +148,9 @@ if st.session_state.reviews_df is None:
         st.markdown("---")
         st.subheader("2️⃣ Pilih Aplikasi dari Hasil Pencarian")
         
-        # Konfigurasi Grid (4 Kolom agar lega)
-        apps_per_row = 4
-        results = st.session_state.search_results
+        # Konfigurasi Grid (5 Kolom, max 10 hasil = 2 baris)
+        apps_per_row = 5
+        results = st.session_state.search_results[:10]  # Limit to 10 results
         
         # Loop Dinamis: Menangani berapapun jumlah baris secara otomatis
         for i in range(0, len(results), apps_per_row):

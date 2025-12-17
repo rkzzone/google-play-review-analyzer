@@ -176,7 +176,7 @@ def search_app_hybrid(query, lang='id', country='id'):
 
     # Sorting Final
     formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
-    return formatted_results[:12]
+    return formatted_results[:10]
 
 def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count', 
                        target_count=500, start_date=None, end_date=None):
