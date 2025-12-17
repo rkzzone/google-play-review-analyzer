@@ -94,161 +94,12 @@ st.markdown("---")
 
 with st.sidebar:
     st.header("🎛️ Control Panel")
-    
-    # App Search Section
-    st.subheader("1️⃣ App Selection")
-    app_name = st.text_input("Enter App Name", placeholder="e.g., Instagram, WhatsApp")
-    
-    if st.button("🔍 Search App", use_container_width=True):
-        if app_name:
-            with st.spinner("Searching for app..."):
-                results = search_app_by_name(app_name)
-                if results:
-                    st.session_state.search_results = results
-                    st.success(f"Found {len(results)} apps!")
-                else:
-                    st.error("No apps found. Try a different name.")
-        else:
-            st.warning("Please enter an app name.")
-    
-    # Display search results
-    if 'search_results' in st.session_state and st.session_state.search_results:
-        st.markdown("#### 🎯 Select an App:")
-        
-        # Create radio button with all results
-        app_options = [f"{app['title']} ({app.get('developer', 'Unknown')})" for app in st.session_state.search_results]
-        selected_index = st.radio(
-            "Choose from results:",
-            range(len(st.session_state.search_results)),
-            format_func=lambda i: app_options[i],
-            label_visibility="collapsed"
-        )
-        
-        # Display selected app details
-        selected_app = st.session_state.search_results[selected_index]
-        
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if selected_app.get('icon'):
-                st.image(selected_app['icon'], width=60)
-        with col2:
-            st.caption(f"⭐ {selected_app.get('score', 'N/A')}")
-            st.caption(f"📦 {selected_app.get('appId', 'N/A')}")
-        
-        if st.button("✅ Use This App", use_container_width=True):
-            st.session_state.selected_app = selected_app
-            st.success(f"Selected: {selected_app['title']}")
-    
-    st.markdown("---")
-    
-    # Scraping Configuration
-    if st.session_state.selected_app:
-        st.subheader("2️⃣ Scraping Configuration")
-        
-        selected_app = st.session_state.selected_app
-        st.info(f"**App:** {selected_app['title']}")
-        
-        # Filter mode selection
-        filter_mode = st.radio(
-            "Select Mode:",
-            options=["Review Count Limit", "Date Range"],
-            help="Choose how to filter reviews"
-        )
-        
-        # Conditional inputs based on mode
-        if filter_mode == "Review Count Limit":
-            review_count = st.number_input(
-                "Number of Reviews",
-                min_value=50,
-                max_value=5000,
-                value=500,
-                step=50,
-                help="Number of most recent reviews to fetch"
-            )
-            start_date = None
-            end_date = None
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input(
-                    "Start Date",
-                    value=datetime.now() - timedelta(days=90),
-                    max_value=datetime.now()
-                )
-            with col2:
-                end_date = st.date_input(
-                    "End Date",
-                    value=datetime.now(),
-                    max_value=datetime.now()
-                )
-            review_count = None
-        
-        # Advanced settings
-        with st.expander("⚙️ Advanced Settings"):
-            lang = st.selectbox("Language", options=['en', 'id', 'es', 'pt'], index=0)
-            country = st.selectbox("Country", options=['us', 'id', 'gb', 'in'], index=0)
-        
-        st.markdown("---")
-        
-        # Analyze button
-        if st.button("🚀 Analyze Reviews", use_container_width=True, type="primary"):
-            app_id = selected_app['appId']
-            
-            # Scrape reviews
-            if filter_mode == "Review Count Limit":
-                reviews_df = scrape_app_reviews(
-                    app_id=app_id,
-                    lang=lang,
-                    country=country,
-                    filter_mode='count',
-                    target_count=review_count
-                )
-            else:
-                reviews_df = scrape_app_reviews(
-                    app_id=app_id,
-                    lang=lang,
-                    country=country,
-                    filter_mode='date_range',
-                    start_date=pd.to_datetime(start_date),
-                    end_date=pd.to_datetime(end_date)
-                )
-            
-            if not reviews_df.empty:
-                # Load sentiment model
-                model, tokenizer, device = load_sentiment_model()
-                
-                if model is not None:
-                    # Predict sentiment
-                    with st.spinner("Analyzing sentiment..."):
-                        predictions, probabilities = predict_sentiment_batch(
-                            reviews_df['review_text'].tolist(),
-                            model,
-                            tokenizer,
-                            device
-                        )
-                        reviews_df['predicted_sentiment'] = predictions
-                    
-                    # Generate topics
-                    topics, topic_model, topic_info = generate_topics(
-                        reviews_df['review_text'].tolist()
-                    )
-                    
-                    if topics is not None:
-                        reviews_df['topic'] = topics
-                        st.session_state.topic_model = topic_model
-                        st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
-                    
-                    # Store in session state
-                    st.session_state.reviews_df = reviews_df
-                    st.success("✅ Analysis complete!")
-                    st.rerun()
-            else:
-                st.error("Failed to fetch reviews. Please try again.")
+    st.info("Controls and filters will appear here after analysis")
     
     # Global filter (post-analysis)
     if st.session_state.reviews_df is not None:
         st.markdown("---")
-        st.subheader("3️⃣ Global Filters")
+        st.subheader("🔍 Filters")
         
         sentiment_filter = st.multiselect(
             "Filter by Sentiment:",
@@ -262,20 +113,190 @@ with st.sidebar:
 # =============================================================================
 
 if st.session_state.reviews_df is None:
-    # Welcome screen
-    st.info("👈 **Get started:** Search for an app using the sidebar and click 'Analyze Reviews'")
+    # Welcome screen with App Selection
+    st.markdown("## 🔍 Get Started")
+    st.markdown("Search for an app to analyze its reviews with AI-powered sentiment analysis")
     
-    # Feature highlights
-    col1, col2, col3 = st.columns(3)
+    # App Search Section
+    st.markdown("---")
+    st.subheader("1️⃣ Search for App")
+    
+    col1, col2 = st.columns([3, 1])
     with col1:
-        st.markdown("### 🎯 Sentiment Analysis")
-        st.write("AI-powered sentiment classification using fine-tuned RoBERTa model")
+        app_name = st.text_input(
+            "Enter App Name",
+            placeholder="e.g., Instagram, WhatsApp, TikTok",
+            label_visibility="collapsed"
+        )
     with col2:
-        st.markdown("### 📊 Topic Modeling")
-        st.write("Discover key themes and issues with BERTopic")
-    with col3:
-        st.markdown("### 🔍 Deep Insights")
-        st.write("Version analysis, n-grams, and customer voice exploration")
+        search_clicked = st.button("🔍 Search", use_container_width=True, type="primary")
+    
+    if search_clicked:
+        if app_name:
+            with st.spinner("Searching for app..."):
+                results = search_app_by_name(app_name)
+                if results:
+                    st.session_state.search_results = results
+                    st.success(f"✅ Found {len(results)} apps!")
+                else:
+                    st.error("❌ No apps found. Try a different name.")
+        else:
+            st.warning("⚠️ Please enter an app name.")
+    
+    # Display search results
+    if 'search_results' in st.session_state and st.session_state.search_results:
+        st.markdown("---")
+        st.subheader("2️⃣ Select App from Results")
+        
+        # Display all results as cards
+        for idx, app in enumerate(st.session_state.search_results):
+            with st.container():
+                col1, col2, col3 = st.columns([1, 5, 2])
+                
+                with col1:
+                    if app.get('icon'):
+                        st.image(app['icon'], width=80)
+                
+                with col2:
+                    st.markdown(f"### {app['title']}")
+                    st.caption(f"👨‍💻 {app.get('developer', 'Unknown Developer')}")
+                    st.caption(f"⭐ Rating: {app.get('score', 'N/A')} | 📦 ID: `{app.get('appId', 'N/A')}`")
+                
+                with col3:
+                    if st.button(f"Select", key=f"select_{idx}", use_container_width=True):
+                        st.session_state.selected_app = app
+                        st.success(f"✅ Selected: {app['title']}")
+                        st.rerun()
+                
+                st.markdown("---")
+    
+    # Scraping Configuration (after app selected)
+    if st.session_state.selected_app:
+        st.markdown("---")
+        st.subheader("3️⃣ Configure Analysis")
+        
+        selected_app = st.session_state.selected_app
+        st.info(f"**Selected App:** {selected_app['title']} by {selected_app.get('developer', 'Unknown')}")
+        
+        # Filter mode selection
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            filter_mode = st.radio(
+                "**Select Scraping Mode:**",
+                options=["Review Count Limit", "Date Range"],
+                help="Choose how to filter reviews"
+            )
+        
+        with col2:
+            # Conditional inputs based on mode
+            if filter_mode == "Review Count Limit":
+                review_count = st.number_input(
+                    "Number of Reviews",
+                    min_value=50,
+                    max_value=5000,
+                    value=500,
+                    step=50,
+                    help="Number of most recent reviews to fetch"
+                )
+                start_date = None
+                end_date = None
+            else:
+                st.markdown("**Date Range:**")
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now() - timedelta(days=90),
+                    max_value=datetime.now()
+                )
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now(),
+                    max_value=datetime.now()
+                )
+                review_count = None
+        
+        # Advanced settings
+        with st.expander("⚙️ Advanced Settings"):
+            col1, col2 = st.columns(2)
+            with col1:
+                lang = st.selectbox("Language", options=['en', 'id', 'es', 'pt'], index=0)
+            with col2:
+                country = st.selectbox("Country", options=['us', 'id', 'gb', 'in'], index=0)
+        
+        st.markdown("---")
+        
+        # Analyze button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
+                app_id = selected_app['appId']
+                
+                # Scrape reviews
+                if filter_mode == "Review Count Limit":
+                    reviews_df = scrape_app_reviews(
+                        app_id=app_id,
+                        lang=lang,
+                        country=country,
+                        filter_mode='count',
+                        target_count=review_count
+                    )
+                else:
+                    reviews_df = scrape_app_reviews(
+                        app_id=app_id,
+                        lang=lang,
+                        country=country,
+                        filter_mode='date_range',
+                        start_date=pd.to_datetime(start_date),
+                        end_date=pd.to_datetime(end_date)
+                    )
+                
+                if not reviews_df.empty:
+                    # Load sentiment model
+                    model, tokenizer, device = load_sentiment_model()
+                    
+                    if model is not None:
+                        # Predict sentiment
+                        with st.spinner("🤖 Analyzing sentiment..."):
+                            predictions, probabilities = predict_sentiment_batch(
+                                reviews_df['review_text'].tolist(),
+                                model,
+                                tokenizer,
+                                device
+                            )
+                            reviews_df['predicted_sentiment'] = predictions
+                        
+                        # Generate topics
+                        with st.spinner("📊 Discovering topics..."):
+                            topics, topic_model, topic_info = generate_topics(
+                                reviews_df['review_text'].tolist()
+                            )
+                            
+                            if topics is not None:
+                                reviews_df['topic'] = topics
+                                st.session_state.topic_model = topic_model
+                                st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
+                        
+                        # Store in session state
+                        st.session_state.reviews_df = reviews_df
+                        st.success("✅ Analysis complete!")
+                        st.rerun()
+                else:
+                    st.error("❌ Failed to fetch reviews. Please try again.")
+    
+    # Feature highlights (only show if no app selected)
+    if not st.session_state.selected_app:
+        st.markdown("---")
+        st.markdown("## ✨ Features")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("### 🎯 Sentiment Analysis")
+            st.write("AI-powered sentiment classification using fine-tuned RoBERTa model")
+        with col2:
+            st.markdown("### 📊 Topic Modeling")
+            st.write("Discover key themes and issues with BERTopic")
+        with col3:
+            st.markdown("### 🔍 Deep Insights")
+            st.write("Version analysis, n-grams, and customer voice exploration")
     
 else:
     # Apply global sentiment filter
