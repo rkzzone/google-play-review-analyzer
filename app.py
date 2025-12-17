@@ -162,29 +162,32 @@ if st.session_state.reviews_df is None:
                 with cols[idx]:
                     # Container dengan border (Kartu)
                     with st.container(border=True):
-                        # Icon di atas (centered)
-                        if app.get('icon'):
-                            st.image(app['icon'], use_container_width=True)
-                        else:
-                            st.markdown("<div style='text-align: center; font-size: 48px;'>📱</div>", unsafe_allow_html=True)
+                        # Layout Icon di kiri, Teks di kanan
+                        c_img, c_txt = st.columns([1, 3])
                         
-                        # Title dengan truncate ketat - max 25 karakter agar 1 baris
-                        title = app['title']
-                        max_title_len = 25
-                        display_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
-                        st.markdown(f"**{display_title}**", help=title)
+                        with c_img:
+                            if app.get('icon'):
+                                st.image(app['icon'], use_container_width=True)
+                            else:
+                                st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
                         
-                        # Info Developer & Rating - single line dengan truncate
-                        score = app.get('score', 0)
-                        rating_display = f"{score:.2f}" if score else "N/A"
-                        dev = app.get('developer', 'Unknown')
-                        # Hitung max length untuk developer agar tidak overflow
-                        max_dev_len = 15
-                        display_dev = dev[:max_dev_len] + "..." if len(dev) > max_dev_len else dev
-                        st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}", unsafe_allow_html=False)
+                        with c_txt:
+                            # Title dengan truncate ketat - max 20 karakter agar 1 baris
+                            title = app['title']
+                            max_title_len = 20
+                            display_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
+                            st.markdown(f"**{display_title}**", help=title)
+                            
+                            # Info Developer & Rating - single line dengan truncate
+                            score = app.get('score', 0)
+                            rating_display = f"{score:.2f}" if score else "N/A"
+                            dev = app.get('developer', 'Unknown')
+                            # Hitung max length untuk developer agar tidak overflow
+                            max_dev_len = 12
+                            display_dev = dev[:max_dev_len] + "..." if len(dev) > max_dev_len else dev
+                            st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}")
 
-                        # Tombol Select
-                        # Key unik kombinasi ID dan index loop agar tidak bentrok
+                        # Tombol Select di bawah (full width)
                         unique_key = f"btn_{app['appId']}_{i}_{idx}"
                         if st.button("Analisis", key=unique_key, use_container_width=True, type="secondary"):
                             st.session_state.selected_app = app
