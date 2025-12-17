@@ -26,7 +26,7 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 
 def search_app_by_name(app_name, lang='en', country='us'):
     """
-    Search for apps by name and return top results.
+    Search for apps by name and return top results with smart matching.
     
     Args:
         app_name (str): Name of the app to search
@@ -41,61 +41,100 @@ def search_app_by_name(app_name, lang='en', country='us'):
             app_name,
             lang=lang,
             country=country,
-            n_hits=20  # Get more results to filter
+            n_hits=30  # Get more results for better matching
         )
         
-        if results:
-            formatted_results = []
-            
-            # Common app ID mappings for apps that don't return appId in search
-            known_app_ids = {
-                'instagram': 'com.instagram.android',
-                'facebook': 'com.facebook.katana',
-                'messenger': 'com.facebook.orca',
-                'whatsapp': 'com.whatsapp',
-                'twitter': 'com.twitter.android',
-                'x': 'com.twitter.android',
-                'tiktok': 'com.zhiliaoapp.musically',
-                'youtube': 'com.google.android.youtube',
-                'gmail': 'com.google.android.gm',
-                'snapchat': 'com.snapchat.android'
-            }
-            
-            for r in results:
-                app_id = r.get('appId')
-                title = r.get('title', '').lower()
+        if not results:
+            return []
+        
+        formatted_results = []
+        
+        # Common app ID mappings for apps that don't return appId in search
+        known_app_ids = {
+            'instagram': 'com.instagram.android',
+            'facebook': 'com.facebook.katana',
+            'messenger': 'com.facebook.orca',
+            'whatsapp': 'com.whatsapp',
+            'twitter': 'com.twitter.android',
+            'x': 'com.twitter.android',
+            'tiktok': 'com.zhiliaoapp.musically',
+            'youtube': 'com.google.android.youtube',
+            'gmail': 'com.google.android.gm',
+            'snapchat': 'com.snapchat.android'
+        }
+        
+        for r in results:
+            # Skip if essential data is missing
+            if not r or not r.get('title'):
+                continue
                 
-                # If appId is None, try to match with known apps
-                if app_id is None:
-                    # Check if title matches any known app
-                    for known_name, known_id in known_app_ids.items():
-                        if known_name in title:
-                            app_id = known_id
-                            break
-                
-                # Only add if we have a valid appId
-                if app_id is not None:
-                    formatted_results.append({
-                        'appId': app_id,
-                        'title': r['title'],
-                        'icon': r.get('icon', ''),
-                        'score': r.get('score', 0),
-                        'developer': r.get('developer', '')
-                    })
+            app_id = r.get('appId')
+            title = r.get('title', '').lower()
             
-            # Prioritize exact or close matches
-            app_name_lower = app_name.lower()
-            exact_matches = [r for r in formatted_results if app_name_lower in r['title'].lower()]
+            # If appId is None, try to match with known apps
+            if app_id is None:
+                for known_name, known_id in known_app_ids.items():
+                    if known_name in title:
+                        app_id = known_id
+                        break
             
-            # If we have exact matches, prioritize them
-            if exact_matches:
-                # Combine: exact matches first, then others
-                other_matches = [r for r in formatted_results if r not in exact_matches]
-                formatted_results = exact_matches[:6] + other_matches[:6]
+            # Only add if we have a valid appId
+            if app_id is not None:
+                formatted_results.append({
+                    'appId': app_id,
+                    'title': r['title'],
+                    'icon': r.get('icon', ''),
+                    'score': r.get('score', 0),
+                    'developer': r.get('developer', ''),
+                    'relevance_score': 0  # Will be calculated
+                })
+        
+        if not formatted_results:
+            return []
+        
+        # Smart ranking based on similarity
+        app_name_lower = app_name.lower()
+        app_words = set(app_name_lower.split())
+        
+        for result in formatted_results:
+            title_lower = result['title'].lower()
+            title_words = set(title_lower.split())
             
-            # Return top 12
-            return formatted_results[:12]
-        return []
+            # Calculate relevance score
+            score = 0
+            
+            # Exact match (highest priority)
+            if app_name_lower == title_lower:
+                score += 1000
+            
+            # Title starts with search term
+            elif title_lower.startswith(app_name_lower):
+                score += 500
+            
+            # Search term in title
+            elif app_name_lower in title_lower:
+                score += 300
+            
+            # Word overlap (fuzzy matching)
+            common_words = app_words.intersection(title_words)
+            if common_words:
+                score += len(common_words) * 50
+            
+            # Boost popular apps (higher rating)
+            score += result['score'] * 10
+            
+            result['relevance_score'] = score
+        
+        # Sort by relevance score (descending)
+        formatted_results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        
+        # Remove relevance_score from final results
+        for result in formatted_results:
+            del result['relevance_score']
+        
+        # Return top 12
+        return formatted_results[:12]
+        
     except Exception as e:
         st.error(f"Error searching for app: {str(e)}")
         return []
