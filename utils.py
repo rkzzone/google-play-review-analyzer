@@ -46,32 +46,42 @@ def search_app_by_name(app_name, lang='en', country='us'):
         
         if results:
             formatted_results = []
-            all_results = []  # Keep track of all results including None appId
+            
+            # Common app ID mappings for apps that don't return appId in search
+            known_app_ids = {
+                'instagram': 'com.instagram.android',
+                'facebook': 'com.facebook.katana',
+                'messenger': 'com.facebook.orca',
+                'whatsapp': 'com.whatsapp',
+                'twitter': 'com.twitter.android',
+                'x': 'com.twitter.android',
+                'tiktok': 'com.zhiliaoapp.musically',
+                'youtube': 'com.google.android.youtube',
+                'gmail': 'com.google.android.gm',
+                'snapchat': 'com.snapchat.android'
+            }
             
             for r in results:
-                # Store all results for debugging
-                all_results.append({
-                    'appId': r.get('appId'),
-                    'title': r['title'],
-                    'icon': r.get('icon', ''),
-                    'score': r.get('score', 0),
-                    'developer': r.get('developer', '')
-                })
+                app_id = r.get('appId')
+                title = r.get('title', '').lower()
                 
-                # Only add to formatted if appId exists
-                if r.get('appId') is not None:
+                # If appId is None, try to match with known apps
+                if app_id is None:
+                    # Check if title matches any known app
+                    for known_name, known_id in known_app_ids.items():
+                        if known_name in title:
+                            app_id = known_id
+                            break
+                
+                # Only add if we have a valid appId
+                if app_id is not None:
                     formatted_results.append({
-                        'appId': r['appId'],
+                        'appId': app_id,
                         'title': r['title'],
                         'icon': r.get('icon', ''),
                         'score': r.get('score', 0),
                         'developer': r.get('developer', '')
                     })
-            
-            # Debug: Show what we found
-            import streamlit as st
-            if not formatted_results and all_results:
-                st.warning(f"Found {len(all_results)} apps but all have NULL appId. Try using exact app ID like 'com.instagram.android'")
             
             # Prioritize exact or close matches
             app_name_lower = app_name.lower()
