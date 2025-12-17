@@ -115,20 +115,29 @@ with st.sidebar:
     if 'search_results' in st.session_state and st.session_state.search_results:
         st.markdown("#### 🎯 Select an App:")
         
-        # Display top result with details
-        top_app = st.session_state.search_results[0]
+        # Create radio button with all results
+        app_options = [f"{app['title']} ({app.get('developer', 'Unknown')})" for app in st.session_state.search_results]
+        selected_index = st.radio(
+            "Choose from results:",
+            range(len(st.session_state.search_results)),
+            format_func=lambda i: app_options[i],
+            label_visibility="collapsed"
+        )
+        
+        # Display selected app details
+        selected_app = st.session_state.search_results[selected_index]
         
         col1, col2 = st.columns([1, 3])
         with col1:
-            if top_app.get('icon'):
-                st.image(top_app['icon'], width=60)
+            if selected_app.get('icon'):
+                st.image(selected_app['icon'], width=60)
         with col2:
-            st.markdown(f"**{top_app['title']}**")
-            st.caption(f"⭐ {top_app.get('score', 'N/A')} | {top_app.get('developer', 'Unknown')}")
+            st.caption(f"⭐ {selected_app.get('score', 'N/A')}")
+            st.caption(f"📦 {selected_app.get('appId', 'N/A')}")
         
         if st.button("✅ Use This App", use_container_width=True):
-            st.session_state.selected_app = top_app
-            st.success(f"Selected: {top_app['title']}")
+            st.session_state.selected_app = selected_app
+            st.success(f"Selected: {selected_app['title']}")
     
     st.markdown("---")
     
@@ -595,15 +604,3 @@ else:
         file_name=f"reviews_{st.session_state.selected_app['title']}_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv"
     )
-
-# =============================================================================
-# Footer
-# =============================================================================
-
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #7f8c8d; padding: 20px;'>
-    <p>App Review Sentiment & Topic Intelligence Dashboard | Powered by RoBERTa & BERTopic</p>
-    <p>Built with ❤️ using Streamlit</p>
-</div>
-""", unsafe_allow_html=True)
