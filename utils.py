@@ -25,8 +25,10 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 # Google Play Scraper Functions
 # =============================================================================
 import re
+import time
 from google_play_scraper import search, app as app_detail
 from rapidfuzz import fuzz
+# Pastikan library ini terinstall: pip install googlesearch-python
 from googlesearch import search as google_web_search
 
 def parse_installs(installs_str):
@@ -36,26 +38,50 @@ def parse_installs(installs_str):
     except ValueError: return 0
 
 def get_id_from_web_search(query):
-    """Fallback cari ID lewat Google.com"""
-    try:
-        # Cari khusus di domain play.google.com
-        search_query = f"site:play.google.com/store/apps/details {query}"
-        results = list(google_web_search(search_query, num_results=1, lang='id', sleep_interval=0))
-        if results:
-            url = results[0]
-            id_pattern = r'id=([a-zA-Z0-9\._]+)'
-            match = re.search(id_pattern, url)
-            if match:
-                print(f"🌍 Web Search menemukan ID: {match.group(1)}")
-                return match.group(1)
-    except Exception as e:
-        print(f"Web search error: {e}")
+    """
+    Fallback: Mencari ID lewat Google.com dengan strategi ganda.
+    """
+    print(f"🌍 Memulai Web Search Fallback untuk: {query}")
+    
+    # STRATEGI 1: Query Spesifik (site:play.google.com)
+    # Ini paling akurat tapi kadang hasil sedikit
+    queries = [
+        f"site:play.google.com/store/apps/details {query}",
+        f"{query} google play store app" # Strategi 2: Query Natural (Backup)
+    ]
+    
+    for q in queries:
+        try:
+            # Ambil 3 hasil teratas, pause 1 detik biar ga dikira bot
+            results = list(google_web_search(q, num_results=3, lang='id', sleep_interval=1))
+            
+            for url in results:
+                # Coba ekstrak ID dari URL
+                # Pola regex menangkap id=com.xxx.yyy
+                id_pattern = r'id=([a-zA-Z0-9\._]+)'
+                match = re.search(id_pattern, url)
+                
+                if match:
+                    found_id = match.group(1)
+                    # Filter ID sampah (kadang ada id=googlevideo dll)
+                    if "." in found_id: 
+                        print(f"✅ Web Search menemukan ID: {found_id} dari query '{q}'")
+                        return found_id
+                        
+        except Exception as e:
+            print(f"⚠️ Web search error pada query '{q}': {e}")
+            continue
+            
+    print("❌ Web Search gagal menemukan ID.")
     return None
 
 def search_app_hybrid(query, lang='id', country='id'):
+    """
+    Hybrid Search: Link/ID -> Play Store Search -> Google Web Search Fallback
+    """
     formatted_results = []
     
-    # --- LAPIS 1: DETEKSI INPUT LINK / ID ---
+    # --- LAPIS 1: DETEKSI INPUT LINK / ID (BYPASS) ---
     id_pattern = r'id=([a-zA-Z0-9\._]+)'
     potential_id = None
     link_match = re.search(id_pattern, query)
@@ -80,7 +106,7 @@ def search_app_hybrid(query, lang='id', country='id'):
             pass 
 
     # --- LAPIS 2: PLAY STORE SEARCH (INTERNAL) ---
-    exact_match_found = False # <--- LOGIKA BARU
+    exact_match_found = False
     
     try:
         results = search(query, lang=lang, country=country, n_hits=30)
@@ -88,17 +114,17 @@ def search_app_hybrid(query, lang='id', country='id'):
         
         if results:
             for r in results:
-                if not r.get('appId'): continue
+                # Validasi ID: Skip jika ID None
+                if not r.get('appId'): 
+                    continue
                 
                 title_lower = r['title'].lower()
                 
-                # Cek apakah judulnya SAMA PERSIS dengan search user?
-                # Contoh: user cari "instagram", ketemu title "instagram" -> True
-                # user cari "instagram", ketemu "instagram lite" -> False
+                # Cek Exact Match
                 if title_lower == search_term:
                     exact_match_found = True
 
-                # Proses Ranking
+                # Ranking Logic
                 installs_count = parse_installs(r.get('installs', '0'))
                 score = r.get('score', 0) if r.get('score') else 0
                 
@@ -121,32 +147,33 @@ def search_app_hybrid(query, lang='id', country='id'):
         print(f"Internal search error: {e}")
 
     # --- LAPIS 3: GOOGLE WEB SEARCH (FALLBACK) ---
-    # Jalankan jika hasil kosong ATAU tidak ada yang namanya persis (Exact Match)
-    # Jadi meskipun ketemu "Instagram Lite", dia tetap akan cari "Instagram" di Web.
-    
+    # Jalan jika: Hasil kosong ATAU Tidak ada yang namanya SAMA PERSIS (Exact Match)
     should_run_fallback = len(formatted_results) == 0 or not exact_match_found
     
     if should_run_fallback:
-        print(f"⚡ Mengaktifkan Fallback karena exact_match={exact_match_found}...")
+        print(f"⚡ Mengaktifkan Fallback... (Exact Match: {exact_match_found})")
         fallback_id = get_id_from_web_search(query)
         
         if fallback_id:
-            # Cek duplikasi ID
+            # Cek duplikasi agar tidak double
             existing_ids = [app['appId'] for app in formatted_results]
             
             if fallback_id not in existing_ids:
                 try:
+                    # Ambil detail dari ID yang ditemukan Web Search
                     r = app_detail(fallback_id, lang=lang, country=country)
+                    
+                    # Masukkan ke urutan PERTAMA (Top 1)
                     formatted_results.insert(0, {
                         'appId': r['appId'],
                         'title': r['title'],
                         'icon': r['icon'],
                         'score': r['score'],
                         'developer': r['developer'],
-                        'relevance': 9999 # Paksa jadi Juara 1
+                        'relevance': 9999 # Paksa skor tertinggi
                     })
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Gagal mengambil detail fallback ID: {e}")
 
     # Sorting Final
     formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
