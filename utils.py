@@ -41,22 +41,37 @@ def search_app_by_name(app_name, lang='en', country='us'):
             app_name,
             lang=lang,
             country=country,
-            n_hits=10  # Get more results to filter
+            n_hits=20  # Get more results to filter
         )
         
         if results:
             formatted_results = []
+            all_results = []  # Keep track of all results including None appId
+            
             for r in results:
-                # Skip apps without appId
-                if r.get('appId') is None:
-                    continue
-                formatted_results.append({
-                    'appId': r['appId'],
+                # Store all results for debugging
+                all_results.append({
+                    'appId': r.get('appId'),
                     'title': r['title'],
                     'icon': r.get('icon', ''),
                     'score': r.get('score', 0),
                     'developer': r.get('developer', '')
                 })
+                
+                # Only add to formatted if appId exists
+                if r.get('appId') is not None:
+                    formatted_results.append({
+                        'appId': r['appId'],
+                        'title': r['title'],
+                        'icon': r.get('icon', ''),
+                        'score': r.get('score', 0),
+                        'developer': r.get('developer', '')
+                    })
+            
+            # Debug: Show what we found
+            import streamlit as st
+            if not formatted_results and all_results:
+                st.warning(f"Found {len(all_results)} apps but all have NULL appId. Try using exact app ID like 'com.instagram.android'")
             
             # Prioritize exact or close matches
             app_name_lower = app_name.lower()
@@ -66,10 +81,10 @@ def search_app_by_name(app_name, lang='en', country='us'):
             if exact_matches:
                 # Combine: exact matches first, then others
                 other_matches = [r for r in formatted_results if r not in exact_matches]
-                formatted_results = exact_matches[:3] + other_matches[:3]
+                formatted_results = exact_matches[:6] + other_matches[:6]
             
-            # Return top 6
-            return formatted_results[:6]
+            # Return top 12
+            return formatted_results[:12]
         return []
     except Exception as e:
         st.error(f"Error searching for app: {str(e)}")

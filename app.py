@@ -117,27 +117,64 @@ if st.session_state.reviews_df is None:
     
     st.subheader("1️⃣ Search for App")
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        app_name = st.text_input(
-            "Enter App Name",
-            placeholder="e.g., Instagram, WhatsApp, TikTok",
-            label_visibility="collapsed"
-        )
-    with col2:
-        search_clicked = st.button("🔍 Search", use_container_width=True, type="primary")
+    # Tabs for different search methods
+    search_tab, direct_tab = st.tabs(["🔍 Search by Name", "📦 Direct App ID"])
     
-    if search_clicked:
-        if app_name:
-            with st.spinner("Searching for app..."):
-                results = search_app_by_name(app_name)
-                if results:
-                    st.session_state.search_results = results
-                    st.success(f"✅ Found {len(results)} apps!")
+    with search_tab:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            app_name = st.text_input(
+                "Enter App Name",
+                placeholder="e.g., Instagram, WhatsApp, TikTok",
+                label_visibility="collapsed",
+                key="app_name_search"
+            )
+        with col2:
+            search_clicked = st.button("🔍 Search", use_container_width=True, type="primary")
+        
+        if search_clicked:
+            if app_name:
+                with st.spinner("Searching for app..."):
+                    results = search_app_by_name(app_name)
+                    if results:
+                        st.session_state.search_results = results
+                        st.success(f"✅ Found {len(results)} apps!")
+                    else:
+                        st.error("❌ No apps found. Try using 'Direct App ID' tab with exact app ID (e.g., com.instagram.android)")
+            else:
+                st.warning("⚠️ Please enter an app name.")
+    
+    with direct_tab:
+        st.info("💡 Use this if app doesn't appear in search. Find app ID from Google Play URL")
+        st.caption("Example: For `https://play.google.com/store/apps/details?id=com.instagram.android`, use `com.instagram.android`")
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            direct_app_id = st.text_input(
+                "Enter App ID",
+                placeholder="e.g., com.instagram.android",
+                label_visibility="collapsed",
+                key="direct_app_id"
+            )
+        with col2:
+            if st.button("✅ Use App ID", use_container_width=True, type="primary"):
+                if direct_app_id:
+                    try:
+                        from google_play_scraper import app as get_app_details
+                        app_details = get_app_details(direct_app_id)
+                        st.session_state.selected_app = {
+                            'appId': direct_app_id,
+                            'title': app_details.get('title', 'Unknown'),
+                            'icon': app_details.get('icon', ''),
+                            'score': app_details.get('score', 0),
+                            'developer': app_details.get('developer', 'Unknown')
+                        }
+                        st.success(f"✅ Selected: {app_details.get('title', direct_app_id)}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Invalid App ID: {str(e)}")
                 else:
-                    st.error("❌ No apps found. Try a different name.")
-        else:
-            st.warning("⚠️ Please enter an app name.")
+                    st.warning("⚠️ Please enter an app ID.")
     
     # Display search results
     if 'search_results' in st.session_state and st.session_state.search_results:
