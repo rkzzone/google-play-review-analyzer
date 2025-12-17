@@ -227,16 +227,20 @@ if st.session_state.reviews_df is None:
                 end_date = None
             else:
                 st.markdown("**Date Range:**")
-                start_date = st.date_input(
-                    "Start Date",
-                    value=datetime.now() - timedelta(days=90),
-                    max_value=datetime.now()
-                )
-                end_date = st.date_input(
-                    "End Date",
-                    value=datetime.now(),
-                    max_value=datetime.now()
-                )
+                # Date inputs side by side
+                date_col1, date_col2 = st.columns(2)
+                with date_col1:
+                    start_date = st.date_input(
+                        "Start Date",
+                        value=datetime.now() - timedelta(days=90),
+                        max_value=datetime.now()
+                    )
+                with date_col2:
+                    end_date = st.date_input(
+                        "End Date",
+                        value=datetime.now(),
+                        max_value=datetime.now()
+                    )
                 review_count = None
         
         st.markdown("---")
