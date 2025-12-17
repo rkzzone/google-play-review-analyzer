@@ -26,7 +26,8 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 
 def search_app_by_name(app_name, lang='en', country='us'):
     """
-    Search for apps by name and return top results with smart matching.
+    Search for apps by name with intelligent fuzzy matching.
+    Uses Google Play Store's own search API.
     
     Args:
         app_name (str): Name of the app to search
@@ -34,14 +35,15 @@ def search_app_by_name(app_name, lang='en', country='us'):
         country (str): Country code
         
     Returns:
-        list: List of app results with appId, title, and icon
+        list: List of app results ranked by relevance
     """
     try:
+        # Search with higher limit to get better results
         results = search(
             app_name,
             lang=lang,
             country=country,
-            n_hits=30  # Get more results for better matching
+            n_hits=50  # Get many results, we'll filter intelligently
         )
         
         if not results:
@@ -49,94 +51,95 @@ def search_app_by_name(app_name, lang='en', country='us'):
         
         formatted_results = []
         
-        # Common app ID mappings for apps that don't return appId in search
-        known_app_ids = {
-            'instagram': 'com.instagram.android',
-            'facebook': 'com.facebook.katana',
-            'messenger': 'com.facebook.orca',
-            'whatsapp': 'com.whatsapp',
-            'twitter': 'com.twitter.android',
-            'x': 'com.twitter.android',
-            'tiktok': 'com.zhiliaoapp.musically',
-            'youtube': 'com.google.android.youtube',
-            'gmail': 'com.google.android.gm',
-            'snapchat': 'com.snapchat.android'
-        }
-        
         for r in results:
-            # Skip if essential data is missing
-            if not r or not r.get('title'):
-                continue
+            try:
+                # Validate essential fields
+                if not r or not isinstance(r.get('title'), str):
+                    continue
                 
-            app_id = r.get('appId')
-            title = r.get('title', '').lower()
-            
-            # If appId is None, try to match with known apps
-            if app_id is None:
-                for known_name, known_id in known_app_ids.items():
-                    if known_name in title:
-                        app_id = known_id
-                        break
-            
-            # Only add if we have a valid appId
-            if app_id is not None:
+                app_id = r.get('appId')
+                
+                # Skip if no appId - these are broken results
+                if not app_id:
+                    continue
+                
                 formatted_results.append({
                     'appId': app_id,
                     'title': r['title'],
                     'icon': r.get('icon', ''),
                     'score': r.get('score', 0),
                     'developer': r.get('developer', ''),
-                    'relevance_score': 0  # Will be calculated
+                    'relevance': 0  # Will be calculated
                 })
+                
+            except (KeyError, TypeError, AttributeError):
+                continue
         
         if not formatted_results:
             return []
         
-        # Smart ranking based on similarity
-        app_name_lower = app_name.lower()
-        app_words = set(app_name_lower.split())
+        # Intelligent ranking using fuzzy string matching
+        search_term = app_name.lower().strip()
         
-        for result in formatted_results:
-            title_lower = result['title'].lower()
-            title_words = set(title_lower.split())
+        for app in formatted_results:
+            title_lower = app['title'].lower()
+            relevance = 0
             
-            # Calculate relevance score
-            score = 0
+            # 1. Exact match (1000 points)
+            if search_term == title_lower:
+                relevance = 1000
             
-            # Exact match (highest priority)
-            if app_name_lower == title_lower:
-                score += 1000
+            # 2. Exact word in title (800 points)
+            elif f" {search_term} " in f" {title_lower} ":
+                relevance = 800
             
-            # Title starts with search term
-            elif title_lower.startswith(app_name_lower):
-                score += 500
+            # 3. Title starts with search (700 points)
+            elif title_lower.startswith(search_term):
+                relevance = 700
             
-            # Search term in title
-            elif app_name_lower in title_lower:
-                score += 300
+            # 4. Title ends with search (600 points)
+            elif title_lower.endswith(search_term):
+                relevance = 600
             
-            # Word overlap (fuzzy matching)
-            common_words = app_words.intersection(title_words)
-            if common_words:
-                score += len(common_words) * 50
+            # 5. Search term contained in title (500 points)
+            elif search_term in title_lower:
+                relevance = 500
             
-            # Boost popular apps (higher rating)
-            score += result['score'] * 10
+            # 6. Fuzzy matching - word overlap
+            else:
+                search_words = set(search_term.split())
+                title_words = set(title_lower.split())
+                
+                # Common words
+                common = search_words & title_words
+                if common:
+                    relevance = 300 + (len(common) * 50)
+                
+                # Partial word matches (typo tolerance)
+                for s_word in search_words:
+                    if len(s_word) >= 3:
+                        for t_word in title_words:
+                            # Check if words are similar (share 80%+ characters)
+                            if t_word.startswith(s_word[:min(len(s_word), len(t_word))-1]):
+                                relevance = max(relevance, 250)
             
-            result['relevance_score'] = score
+            # Boost by app quality (rating 0-5 × 20 = 0-100 points)
+            relevance += int(app['score'] * 20)
+            
+            app['relevance'] = relevance
         
-        # Sort by relevance score (descending)
-        formatted_results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        # Sort by relevance (descending)
+        formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
         
-        # Remove relevance_score from final results
-        for result in formatted_results:
-            del result['relevance_score']
+        # Clean up and return top 12
+        for app in formatted_results:
+            del app['relevance']
         
-        # Return top 12
         return formatted_results[:12]
         
     except Exception as e:
-        st.error(f"Error searching for app: {str(e)}")
+        import streamlit as st
+        st.error(f"Search error: {str(e)}")
         return []
 
 
