@@ -172,18 +172,18 @@ if st.session_state.reviews_df is None:
                                 st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
                         
                         with c_txt:
-                            # Title dengan truncate ketat - max 20 karakter agar 1 baris
+                            # Title dengan truncate untuk 5 kolom - max 15 karakter agar 1 baris
                             title = app['title']
-                            max_title_len = 20
+                            max_title_len = 15
                             display_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
                             st.markdown(f"**{display_title}**", help=title)
                             
-                            # Info Developer & Rating - single line dengan truncate
+                            # Info Developer & Rating - single line dengan truncate lebih ketat
                             score = app.get('score', 0)
                             rating_display = f"{score:.2f}" if score else "N/A"
                             dev = app.get('developer', 'Unknown')
-                            # Hitung max length untuk developer agar tidak overflow
-                            max_dev_len = 12
+                            # Max 8 karakter untuk developer karena space lebih sempit
+                            max_dev_len = 8
                             display_dev = dev[:max_dev_len] + "..." if len(dev) > max_dev_len else dev
                             st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}")
 
