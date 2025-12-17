@@ -27,120 +27,146 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 import re
 from google_play_scraper import search, app as app_detail
 from rapidfuzz import fuzz
+# Import library baru
+from googlesearch import search as google_web_search
 
 def parse_installs(installs_str):
-    """Mengubah string '1,000,000+' menjadi integer 1000000"""
-    if not installs_str:
-        return 0
+    if not installs_str: return 0
     clean_str = re.sub(r'[^\d]', '', str(installs_str))
+    try: return int(clean_str)
+    except ValueError: return 0
+
+def get_id_from_web_search(query):
+    """
+    Fallback: Mencari ID lewat Google.com jika search Play Store gagal.
+    Query: site:play.google.com "Nama App"
+    """
     try:
-        return int(clean_str)
-    except ValueError:
-        return 0
+        # Cari khusus di domain play.google.com
+        search_query = f"site:play.google.com/store/apps/details {query}"
+        
+        # Ambil 1 hasil teratas saja (biasanya paling akurat)
+        # sleep_interval=0 agar cepat
+        results = list(google_web_search(search_query, num_results=1, lang='id', sleep_interval=0))
+        
+        if results:
+            url = results[0]
+            # Ekstrak ID dari URL (id=com.xxxxx)
+            id_pattern = r'id=([a-zA-Z0-9\._]+)'
+            match = re.search(id_pattern, url)
+            if match:
+                print(f"🌍 Web Search menemukan ID: {match.group(1)}")
+                return match.group(1)
+    except Exception as e:
+        print(f"Web search error: {e}")
+        return None
+    return None
 
 def search_app_hybrid(query, lang='id', country='id'):
     """
-    Fungsi pencarian robust:
-    1. Cek apakah user menginput Link/ID -> Langsung ambil detail (bypass search error).
-    2. Jika keyword biasa -> Lakukan search + ranking popularitas.
+    Hybrid Search: Link/ID -> Play Store Search -> Google Web Search
     """
-    
     formatted_results = []
     
-    # --- LANGKAH 1: Cek Direct Link / ID (Solusi Masalah Instagram) ---
-    # Pola regex untuk mendeteksi 'com.android.app' atau 'id=com.android.app'
+    # --- LAPIS 1: DETEKSI INPUT LINK / ID ---
     id_pattern = r'id=([a-zA-Z0-9\._]+)'
-    
     potential_id = None
     link_match = re.search(id_pattern, query)
     
     if link_match:
-        potential_id = link_match.group(1) # Ambil ID dari link
+        potential_id = link_match.group(1)
     elif "." in query and " " not in query:
-        # Asumsi user paste ID langsung (misal: com.instagram.android)
         potential_id = query.strip()
         
     if potential_id:
         try:
-            # Langsung ambil detail app tanpa searching
             r = app_detail(potential_id, lang=lang, country=country)
-            
-            # Format hasil agar sama dengan output search
             return [{
                 'appId': r['appId'],
                 'title': r['title'],
                 'icon': r['icon'],
                 'score': r['score'],
                 'developer': r['developer'],
-                'installs': r.get('installs', '0'),
-                'source': 'Direct ID Match' # Penanda debug
+                'source': 'Direct Link'
             }]
-        except Exception as e:
-            # Jika gagal (misal ID salah), lanjut ke pencarian biasa di bawah
-            print(f"Direct ID fetch failed: {e}")
-            pass
+        except:
+            pass 
 
-    # --- LANGKAH 2: Pencarian Biasa (Search API) ---
+    # --- LAPIS 2: PLAY STORE SEARCH (INTERNAL) ---
+    found_via_internal = False
     try:
-        results = search(
-            query,
-            lang=lang,
-            country=country,
-            n_hits=30 
-        )
-        
-        if not results:
-            return []
-        
+        results = search(query, lang=lang, country=country, n_hits=30)
         search_term = query.lower().strip()
         
-        for r in results:
-            # PENTING: Skip jika appId None (Hasil error dari Google), 
-            # tapi karena kita sudah punya LANGKAH 1, user aman bisa pakai Link.
-            if not r.get('appId'):
-                continue
+        if results:
+            for r in results:
+                # SKIP jika ID None (Error Google)
+                if not r.get('appId'):
+                    continue
                 
-            installs_count = parse_installs(r.get('installs', '0'))
-            score = r.get('score', 0) if r.get('score') else 0
-            title_lower = r['title'].lower()
-            
-            # --- LOGIKA RANKING (Fuzzy + Popularity) ---
-            relevance = 0
-            
-            # 1. Similarity Nama
-            relevance += fuzz.partial_ratio(search_term, title_lower)
-            
-            if title_lower.startswith(search_term):
-                relevance += 50
-            
-            # 2. Popularitas (Agar app resmi di atas app guide/sticker)
-            if installs_count > 100_000_000: relevance += 200
-            elif installs_count > 10_000_000: relevance += 150
-            elif installs_count > 1_000_000: relevance += 100
-            elif installs_count > 100_000: relevance += 50
-            
-            # 3. Rating
-            relevance += (score * 5)
-            
-            formatted_results.append({
-                'appId': r['appId'],
-                'title': r['title'],
-                'icon': r.get('icon', ''),
-                'score': score,
-                'developer': r.get('developer', ''),
-                'installs': r.get('installs', '0'),
-                'relevance': relevance
-            })
-            
-        # Sort desc berdasarkan relevance
-        formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
-        
-        return formatted_results[:12] # Ambil 12 teratas
-        
-    except Exception as e:
-        print(f"Error search: {e}")
-        return []
+                # Cek kemiripan nama untuk memastikan ini bukan aplikasi sampah
+                # Jika nama sangat mirip, kita anggap internal search berhasil
+                title_lower = r['title'].lower()
+                if fuzz.partial_ratio(search_term, title_lower) > 80:
+                     found_via_internal = True
 
+                # Proses Ranking
+                installs_count = parse_installs(r.get('installs', '0'))
+                score = r.get('score', 0) if r.get('score') else 0
+                
+                relevance = 0
+                relevance += fuzz.partial_ratio(search_term, title_lower)
+                if title_lower.startswith(search_term): relevance += 50
+                if installs_count > 100_000_000: relevance += 200
+                elif installs_count > 10_000_000: relevance += 150
+                
+                relevance += (score * 5)
+                
+                formatted_results.append({
+                    'appId': r['appId'],
+                    'title': r['title'],
+                    'icon': r.get('icon', ''),
+                    'score': score,
+                    'developer': r.get('developer', ''),
+                    'relevance': relevance
+                })
+    except Exception as e:
+        print(f"Internal search error: {e}")
+
+    # --- LAPIS 3: GOOGLE WEB SEARCH (FALLBACK) ---
+    # Jalankan ini HANYA JIKA:
+    # 1. Hasil internal kosong, ATAU
+    # 2. Hasil internal tidak ada yang namanya mirip banget (mungkin ID None semua terbuang)
+    
+    should_run_fallback = len(formatted_results) == 0 or not found_via_internal
+    
+    if should_run_fallback:
+        print("⚡ Mengaktifkan Google Web Search Fallback...")
+        fallback_id = get_id_from_web_search(query)
+        
+        if fallback_id:
+            # Cek apakah ID ini sudah ada di hasil sebelumnya?
+            # Kalau belum, ambil detailnya dan taruh di URUTAN PERTAMA
+            existing_ids = [app['appId'] for app in formatted_results]
+            
+            if fallback_id not in existing_ids:
+                try:
+                    r = app_detail(fallback_id, lang=lang, country=country)
+                    # Masukkan sebagai hasil paling relevan (Top 1)
+                    formatted_results.insert(0, {
+                        'appId': r['appId'],
+                        'title': r['title'],
+                        'icon': r['icon'],
+                        'score': r['score'],
+                        'developer': r['developer'],
+                        'relevance': 9999 # Prioritas Tertinggi
+                    })
+                except:
+                    pass
+
+    # Sorting Final
+    formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
+    return formatted_results[:12]
 
 def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count', 
                        target_count=500, start_date=None, end_date=None):
