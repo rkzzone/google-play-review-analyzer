@@ -25,59 +25,69 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 # Google Play Scraper Functions
 # =============================================================================
 import re
-import time
+import requests
+from urllib.parse import quote
 from google_play_scraper import search, app as app_detail
 from rapidfuzz import fuzz
-# Pastikan library ini terinstall: pip install googlesearch-python
-from googlesearch import search as google_web_search
 
 def parse_installs(installs_str):
+    """Mengubah '1,000,000+' jadi integer"""
     if not installs_str: return 0
     clean_str = re.sub(r'[^\d]', '', str(installs_str))
     try: return int(clean_str)
     except ValueError: return 0
 
-def get_id_from_web_search(query):
+def find_real_app_id_scraping(app_name, developer=None):
     """
-    Fallback: Mencari ID lewat Google.com dengan strategi ganda.
+    Fungsi Penyelamat (Rescue Function):
+    Mencari App ID langsung dari HTML halaman pencarian Google Play
+    ketika API mengembalikan None.
     """
-    print(f"🌍 Memulai Web Search Fallback untuk: {query}")
-    
-    # STRATEGI 1: Query Spesifik (site:play.google.com)
-    # Ini paling akurat tapi kadang hasil sedikit
-    queries = [
-        f"site:play.google.com/store/apps/details {query}",
-        f"{query} google play store app" # Strategi 2: Query Natural (Backup)
-    ]
-    
-    for q in queries:
-        try:
-            # Ambil 3 hasil teratas, pause 1 detik biar ga dikira bot
-            results = list(google_web_search(q, num_results=3, lang='id', sleep_interval=1))
+    try:
+        # Method 1: Scrape HTML Google Play Search
+        encoded_name = quote(app_name)
+        search_url = f"https://play.google.com/store/search?q={encoded_name}&c=apps"
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Request langsung ke Google Play
+        response = requests.get(search_url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            # Regex untuk mencari pola id=com.paket.nama
+            pattern = r'/store/apps/details\?id=([a-zA-Z0-9._]+)'
+            matches = re.findall(pattern, response.text)
             
-            for url in results:
-                # Coba ekstrak ID dari URL
-                # Pola regex menangkap id=com.xxx.yyy
-                id_pattern = r'id=([a-zA-Z0-9\._]+)'
-                match = re.search(id_pattern, url)
-                
-                if match:
-                    found_id = match.group(1)
-                    # Filter ID sampah (kadang ada id=googlevideo dll)
-                    if "." in found_id: 
-                        print(f"✅ Web Search menemukan ID: {found_id} dari query '{q}'")
-                        return found_id
-                        
-        except Exception as e:
-            print(f"⚠️ Web search error pada query '{q}': {e}")
-            continue
-            
-    print("❌ Web Search gagal menemukan ID.")
-    return None
+            if matches:
+                # Filter hasil sampah (kadang ada id aneh), pastikan ada titik
+                for candidate_id in matches:
+                    if "." in candidate_id:
+                        print(f"✅ ID ditemukan via Scraping HTML: {candidate_id}")
+                        return candidate_id
+        
+        # Method 2: Fallback - Coba search ulang dengan region en/us + developer
+        if developer:
+            print(f"🔄 Fallback: Mencoba search dengan developer di region EN/US...")
+            try:
+                alt_results = search(f"{app_name} {developer}", lang='en', country='us', n_hits=5)
+                for r in alt_results:
+                    alt_id = r.get('appId')
+                    if alt_id and alt_id != 'None' and alt_id != '':
+                        print(f"✅ ID ditemukan via Fallback Search: {alt_id}")
+                        return alt_id
+            except:
+                pass
+        
+        return None
+    except Exception as e:
+        print(f"⚠️ Error scraping HTML: {e}")
+        return None
 
 def search_app_hybrid(query, lang='id', country='id'):
     """
-    Hybrid Search: Link/ID -> Play Store Search -> Google Web Search Fallback
+    Hybrid Search v2: Link/ID -> Internal Search -> HTML Scraping Repair
     """
     formatted_results = []
     
@@ -100,80 +110,69 @@ def search_app_hybrid(query, lang='id', country='id'):
                 'icon': r['icon'],
                 'score': r['score'],
                 'developer': r['developer'],
-                'source': 'Direct Link'
+                'relevance': 9999 # Prioritas Tertinggi
             }]
         except:
             pass 
 
-    # --- LAPIS 2: PLAY STORE SEARCH (INTERNAL) ---
-    exact_match_found = False
-    
+    # --- LAPIS 2: INTERNAL SEARCH + AUTO REPAIR ---
     try:
+        # Kita ambil hasil search biasa
         results = search(query, lang=lang, country=country, n_hits=30)
         search_term = query.lower().strip()
         
         if results:
             for r in results:
-                # Validasi ID: Skip jika ID None
-                if not r.get('appId'): 
-                    continue
+                app_id = r.get('appId')
+                title = r.get('title', 'Unknown')
                 
+                # --- LOGIKA PERBAIKAN (YOUR CODE LOGIC) ---
+                # Jika ID None, jangan dibuang! Coba kita perbaiki (Scraping)
+                if not app_id or app_id == 'None' or app_id == '':
+                    print(f"🔍 ID Kosong untuk '{title}', mencoba memperbaiki...")
+                    developer_name = r.get('developer')
+                    recovered_id = find_real_app_id_scraping(title, developer_name)
+                    
+                    if recovered_id:
+                        # Jika berhasil diperbaiki, kita harus ambil detailnya lagi
+                        # karena data di 'r' saat ini mungkin tidak lengkap/rusak
+                        try:
+                            fixed_app = app_detail(recovered_id, lang=lang, country=country)
+                            # Update data 'r' dengan data yang baru ditarik
+                            r = fixed_app
+                            app_id = recovered_id # Update variabel lokal
+                        except:
+                            continue # Jika fetch detail gagal, ya sudah skip
+                    else:
+                        continue # Jika tidak bisa diperbaiki, skip
+                
+                # --- PROSES RANKING ---
                 title_lower = r['title'].lower()
-                
-                # Cek Exact Match
-                if title_lower == search_term:
-                    exact_match_found = True
-
-                # Ranking Logic
                 installs_count = parse_installs(r.get('installs', '0'))
                 score = r.get('score', 0) if r.get('score') else 0
                 
                 relevance = 0
                 relevance += fuzz.partial_ratio(search_term, title_lower)
-                if title_lower.startswith(search_term): relevance += 50
+                
+                if title_lower == search_term: relevance += 100
+                elif title_lower.startswith(search_term): relevance += 50
+                
                 if installs_count > 100_000_000: relevance += 200
                 elif installs_count > 10_000_000: relevance += 150
+                
                 relevance += (score * 5)
                 
                 formatted_results.append({
-                    'appId': r['appId'],
+                    'appId': app_id, # Pastikan pakai ID yang valid (atau hasil repair)
                     'title': r['title'],
                     'icon': r.get('icon', ''),
                     'score': score,
                     'developer': r.get('developer', ''),
                     'relevance': relevance
                 })
+                
     except Exception as e:
-        print(f"Internal search error: {e}")
-
-    # --- LAPIS 3: GOOGLE WEB SEARCH (FALLBACK) ---
-    # Jalan jika: Hasil kosong ATAU Tidak ada yang namanya SAMA PERSIS (Exact Match)
-    should_run_fallback = len(formatted_results) == 0 or not exact_match_found
-    
-    if should_run_fallback:
-        print(f"⚡ Mengaktifkan Fallback... (Exact Match: {exact_match_found})")
-        fallback_id = get_id_from_web_search(query)
-        
-        if fallback_id:
-            # Cek duplikasi agar tidak double
-            existing_ids = [app['appId'] for app in formatted_results]
-            
-            if fallback_id not in existing_ids:
-                try:
-                    # Ambil detail dari ID yang ditemukan Web Search
-                    r = app_detail(fallback_id, lang=lang, country=country)
-                    
-                    # Masukkan ke urutan PERTAMA (Top 1)
-                    formatted_results.insert(0, {
-                        'appId': r['appId'],
-                        'title': r['title'],
-                        'icon': r['icon'],
-                        'score': r['score'],
-                        'developer': r['developer'],
-                        'relevance': 9999 # Paksa skor tertinggi
-                    })
-                except Exception as e:
-                    print(f"Gagal mengambil detail fallback ID: {e}")
+        print(f"Search error: {e}")
 
     # Sorting Final
     formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
