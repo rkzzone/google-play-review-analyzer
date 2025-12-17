@@ -239,14 +239,6 @@ if st.session_state.reviews_df is None:
                 )
                 review_count = None
         
-        # Advanced settings
-        with st.expander("⚙️ Advanced Settings"):
-            col1, col2 = st.columns(2)
-            with col1:
-                lang = st.selectbox("Language", options=['en', 'id', 'es', 'pt'], index=0)
-            with col2:
-                country = st.selectbox("Country", options=['us', 'id', 'gb', 'in'], index=0)
-        
         st.markdown("---")
         
         # Analyze button
@@ -254,6 +246,10 @@ if st.session_state.reviews_df is None:
         with col2:
             if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
                 app_id = selected_app['appId']
+                
+                # Default to English language and US country
+                lang = 'en'
+                country = 'us'
                 
                 # Scrape reviews
                 if filter_mode == "Review Count Limit":
