@@ -25,28 +25,65 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 # Google Play Scraper Functions
 # =============================================================================
 import re
-from google_play_scraper import search
-from rapidfuzz import fuzz # Library fuzzy matching standar industri
+from google_play_scraper import search, app as app_detail
+from rapidfuzz import fuzz
 
 def parse_installs(installs_str):
     """Mengubah string '1,000,000+' menjadi integer 1000000"""
     if not installs_str:
         return 0
-    # Hapus non-digit karakter (koma, plus, spasi)
     clean_str = re.sub(r'[^\d]', '', str(installs_str))
     try:
         return int(clean_str)
     except ValueError:
         return 0
 
-def search_app_by_name(app_name, lang='id', country='id'): # Default ke ID karena target user Indo
+def search_app_hybrid(query, lang='id', country='id'):
     """
-    Search apps with intelligent ranking prioritizing EXACT matches and POPULARITY.
+    Fungsi pencarian robust:
+    1. Cek apakah user menginput Link/ID -> Langsung ambil detail (bypass search error).
+    2. Jika keyword biasa -> Lakukan search + ranking popularitas.
     """
+    
+    formatted_results = []
+    
+    # --- LANGKAH 1: Cek Direct Link / ID (Solusi Masalah Instagram) ---
+    # Pola regex untuk mendeteksi 'com.android.app' atau 'id=com.android.app'
+    id_pattern = r'id=([a-zA-Z0-9\._]+)'
+    
+    potential_id = None
+    link_match = re.search(id_pattern, query)
+    
+    if link_match:
+        potential_id = link_match.group(1) # Ambil ID dari link
+    elif "." in query and " " not in query:
+        # Asumsi user paste ID langsung (misal: com.instagram.android)
+        potential_id = query.strip()
+        
+    if potential_id:
+        try:
+            # Langsung ambil detail app tanpa searching
+            r = app_detail(potential_id, lang=lang, country=country)
+            
+            # Format hasil agar sama dengan output search
+            return [{
+                'appId': r['appId'],
+                'title': r['title'],
+                'icon': r['icon'],
+                'score': r['score'],
+                'developer': r['developer'],
+                'installs': r.get('installs', '0'),
+                'source': 'Direct ID Match' # Penanda debug
+            }]
+        except Exception as e:
+            # Jika gagal (misal ID salah), lanjut ke pencarian biasa di bawah
+            print(f"Direct ID fetch failed: {e}")
+            pass
+
+    # --- LANGKAH 2: Pencarian Biasa (Search API) ---
     try:
-        # 1. Batasi n_hits ke 30 agar responsif (50 terlalu lama)
         results = search(
-            app_name,
+            query,
             lang=lang,
             country=country,
             n_hits=30 
@@ -55,45 +92,35 @@ def search_app_by_name(app_name, lang='id', country='id'): # Default ke ID karen
         if not results:
             return []
         
-        formatted_results = []
-        search_term = app_name.lower().strip()
+        search_term = query.lower().strip()
         
         for r in results:
-            # Validasi data dasar
-            if not r or not r.get('title') or not r.get('appId'):
+            # PENTING: Skip jika appId None (Hasil error dari Google), 
+            # tapi karena kita sudah punya LANGKAH 1, user aman bisa pakai Link.
+            if not r.get('appId'):
                 continue
-            
-            # Parsing data penting
+                
             installs_count = parse_installs(r.get('installs', '0'))
             score = r.get('score', 0) if r.get('score') else 0
             title_lower = r['title'].lower()
             
-            # --- LOGIKA RANKING BARU ---
+            # --- LOGIKA RANKING (Fuzzy + Popularity) ---
             relevance = 0
             
-            # A. Text Matching Score (Max 100 poin) menggunakan RapidFuzz
-            # Ratio: Seberapa mirip stringnya (Levenshtein distance)
-            # Partial Ratio: Mencocokkan substring terbaik
-            fuzzy_score = fuzz.partial_ratio(search_term, title_lower)
-            relevance += fuzzy_score
+            # 1. Similarity Nama
+            relevance += fuzz.partial_ratio(search_term, title_lower)
             
-            # Bonus untuk Exact Match di awal kalimat (biasanya Official App)
             if title_lower.startswith(search_term):
                 relevance += 50
             
-            # B. Popularity Boost (SANGAT PENTING)
-            # Logika: Aplikasi dengan 100jt install harus naik drastis
-            if installs_count > 100_000_000:
-                relevance += 200
-            elif installs_count > 10_000_000:
-                relevance += 150
-            elif installs_count > 1_000_000:
-                relevance += 100
-            elif installs_count > 100_000:
-                relevance += 50
+            # 2. Popularitas (Agar app resmi di atas app guide/sticker)
+            if installs_count > 100_000_000: relevance += 200
+            elif installs_count > 10_000_000: relevance += 150
+            elif installs_count > 1_000_000: relevance += 100
+            elif installs_count > 100_000: relevance += 50
             
-            # C. Rating Boost (Kecil saja sebagai pembeda)
-            relevance += (score * 5) # Max 25 poin
+            # 3. Rating
+            relevance += (score * 5)
             
             formatted_results.append({
                 'appId': r['appId'],
@@ -101,19 +128,17 @@ def search_app_by_name(app_name, lang='id', country='id'): # Default ke ID karen
                 'icon': r.get('icon', ''),
                 'score': score,
                 'developer': r.get('developer', ''),
-                'installs': r.get('installs', '0'), # Tampilkan ke user agar yakin
+                'installs': r.get('installs', '0'),
                 'relevance': relevance
             })
             
         # Sort desc berdasarkan relevance
         formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
         
-        # Return Top 10 cukup
-        return formatted_results[:10]
+        return formatted_results[:12] # Ambil 12 teratas
         
     except Exception as e:
-        # Jangan pakai st.error di sini. Return list kosong dan biarkan app.py yang handle
-        print(f"Error in search utility: {e}") 
+        print(f"Error search: {e}")
         return []
 
 
