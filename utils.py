@@ -41,9 +41,9 @@ def search_app_by_name(app_name, lang='en', country='us'):
         # Search with higher limit to get better results
         results = search(
             app_name,
-            lang=lang,
-            country=country,
-            n_hits=50  # Get many results, we'll filter intelligently
+            lang=id,
+            country=id,
+            n_hits=8  # Get many results, we'll filter intelligently
         )
         
         if not results:
