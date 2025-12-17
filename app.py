@@ -145,8 +145,16 @@ if st.session_state.reviews_df is None:
                 st.warning("⚠️ Please enter an app name.")
     
     with direct_tab:
-        st.info("💡 Use this if app doesn't appear in search. Find app ID from Google Play URL")
-        st.caption("Example: For `https://play.google.com/store/apps/details?id=com.instagram.android`, use `com.instagram.android`")
+        st.info("💡 Use this if app doesn't appear in search results (e.g., Instagram)")
+        st.caption("**Example:** For `https://play.google.com/store/apps/details?id=com.instagram.android`, use `com.instagram.android`")
+        
+        # Popular app IDs helper
+        with st.expander("📋 Popular App IDs"):
+            st.code("Instagram: com.instagram.android")
+            st.code("WhatsApp: com.whatsapp")
+            st.code("Facebook: com.facebook.katana")
+            st.code("TikTok: com.zhiliaoapp.musically")
+            st.code("Twitter/X: com.twitter.android")
         
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -181,37 +189,75 @@ if st.session_state.reviews_df is None:
         st.markdown("---")
         st.subheader("2️⃣ Select App from Results")
         
-        # Display all results as cards in a single row
-        cols = st.columns(len(st.session_state.search_results))
+        # Display in 2 rows of 6 cards each
+        apps_per_row = 6
+        total_apps = len(st.session_state.search_results)
         
-        for idx, app in enumerate(st.session_state.search_results):
-            with cols[idx]:
-                # Card container with styling
-                with st.container():
-                    # App icon
-                    if app.get('icon'):
-                        st.image(app['icon'], use_column_width=True)
-                    else:
-                        st.markdown("📱")
-                    
-                    # App title (truncated if too long)
-                    title = app['title']
-                    display_title = title if len(title) <= 20 else title[:17] + "..."
-                    st.markdown(f"**{display_title}**")
-                    
-                    # Rating
-                    st.caption(f"⭐ {app.get('score', 'N/A')}")
-                    
-                    # Developer (truncated)
-                    dev = app.get('developer', 'Unknown')
-                    display_dev = dev if len(dev) <= 15 else dev[:12] + "..."
-                    st.caption(f"👨‍💻 {display_dev}")
-                    
-                    # Select button
-                    if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
-                        st.session_state.selected_app = app
-                        st.success(f"✅ {app['title']}")
-                        st.rerun()
+        # First row (first 6 apps)
+        if total_apps > 0:
+            cols = st.columns(min(apps_per_row, total_apps))
+            for idx in range(min(apps_per_row, total_apps)):
+                app = st.session_state.search_results[idx]
+                with cols[idx]:
+                    with st.container():
+                        # App icon
+                        if app.get('icon'):
+                            st.image(app['icon'], use_column_width=True)
+                        else:
+                            st.markdown("📱")
+                        
+                        # App title (truncated if too long)
+                        title = app['title']
+                        display_title = title if len(title) <= 15 else title[:12] + "..."
+                        st.markdown(f"**{display_title}**")
+                        
+                        # Rating
+                        st.caption(f"⭐ {app.get('score', 'N/A')}")
+                        
+                        # Developer (truncated)
+                        dev = app.get('developer', 'Unknown')
+                        display_dev = dev if len(dev) <= 12 else dev[:9] + "..."
+                        st.caption(f"👨‍💻 {display_dev}")
+                        
+                        # Select button
+                        if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
+                            st.session_state.selected_app = app
+                            st.success(f"✅ {app['title']}")
+                            st.rerun()
+        
+        # Second row (next 6 apps if available)
+        if total_apps > apps_per_row:
+            st.markdown("")  # Spacing
+            cols = st.columns(min(apps_per_row, total_apps - apps_per_row))
+            for idx in range(apps_per_row, min(total_apps, apps_per_row * 2)):
+                app = st.session_state.search_results[idx]
+                col_idx = idx - apps_per_row
+                with cols[col_idx]:
+                    with st.container():
+                        # App icon
+                        if app.get('icon'):
+                            st.image(app['icon'], use_column_width=True)
+                        else:
+                            st.markdown("📱")
+                        
+                        # App title (truncated if too long)
+                        title = app['title']
+                        display_title = title if len(title) <= 15 else title[:12] + "..."
+                        st.markdown(f"**{display_title}**")
+                        
+                        # Rating
+                        st.caption(f"⭐ {app.get('score', 'N/A')}")
+                        
+                        # Developer (truncated)
+                        dev = app.get('developer', 'Unknown')
+                        display_dev = dev if len(dev) <= 12 else dev[:9] + "..."
+                        st.caption(f"👨‍💻 {display_dev}")
+                        
+                        # Select button
+                        if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
+                            st.session_state.selected_app = app
+                            st.success(f"✅ {app['title']}")
+                            st.rerun()
     
     # Scraping Configuration (after app selected)
     if st.session_state.selected_app:
