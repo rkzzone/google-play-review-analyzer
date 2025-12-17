@@ -86,7 +86,6 @@ if 'topic_labels' not in st.session_state:
 
 st.title("📱 App Review Sentiment & Topic Intelligence Dashboard")
 st.markdown("**Analyze Google Play Store reviews with AI-powered sentiment analysis and topic modeling**")
-st.markdown("---")
 
 # =============================================================================
 # Sidebar - Control Panel
@@ -114,11 +113,8 @@ with st.sidebar:
 
 if st.session_state.reviews_df is None:
     # Welcome screen with App Selection
-    st.markdown("## 🔍 Get Started")
     st.markdown("Search for an app to analyze its reviews with AI-powered sentiment analysis")
     
-    # App Search Section
-    st.markdown("---")
     st.subheader("1️⃣ Search for App")
     
     col1, col2 = st.columns([3, 1])
