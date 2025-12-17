@@ -13,6 +13,7 @@ from transformers import RobertaTokenizer, RobertaForSequenceClassification
 from google_play_scraper import app, search, Sort, reviews
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
+from rapidfuzz import fuzz
 import re
 
 # Base path configuration - use script directory
@@ -23,123 +24,96 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 # =============================================================================
 # Google Play Scraper Functions
 # =============================================================================
+import re
+from google_play_scraper import search
+from rapidfuzz import fuzz # Library fuzzy matching standar industri
 
-def search_app_by_name(app_name, lang='en', country='us'):
+def parse_installs(installs_str):
+    """Mengubah string '1,000,000+' menjadi integer 1000000"""
+    if not installs_str:
+        return 0
+    # Hapus non-digit karakter (koma, plus, spasi)
+    clean_str = re.sub(r'[^\d]', '', str(installs_str))
+    try:
+        return int(clean_str)
+    except ValueError:
+        return 0
+
+def search_app_by_name(app_name, lang='id', country='id'): # Default ke ID karena target user Indo
     """
-    Search for apps by name with intelligent fuzzy matching.
-    Uses Google Play Store's own search API.
-    
-    Args:
-        app_name (str): Name of the app to search
-        lang (str): Language code
-        country (str): Country code
-        
-    Returns:
-        list: List of app results ranked by relevance
+    Search apps with intelligent ranking prioritizing EXACT matches and POPULARITY.
     """
     try:
-        # Search with higher limit to get better results
+        # 1. Batasi n_hits ke 30 agar responsif (50 terlalu lama)
         results = search(
             app_name,
-            lang=id,
-            country=id,
-            n_hits=8  # Get many results, we'll filter intelligently
+            lang=lang,
+            country=country,
+            n_hits=30 
         )
         
         if not results:
             return []
         
         formatted_results = []
-        
-        for r in results:
-            try:
-                # Validate essential fields
-                if not r or not isinstance(r.get('title'), str):
-                    continue
-                
-                app_id = r.get('appId')
-                
-                # Skip if no appId - these are broken results
-                if not app_id:
-                    continue
-                
-                formatted_results.append({
-                    'appId': app_id,
-                    'title': r['title'],
-                    'icon': r.get('icon', ''),
-                    'score': r.get('score', 0),
-                    'developer': r.get('developer', ''),
-                    'relevance': 0  # Will be calculated
-                })
-                
-            except (KeyError, TypeError, AttributeError):
-                continue
-        
-        if not formatted_results:
-            return []
-        
-        # Intelligent ranking using fuzzy string matching
         search_term = app_name.lower().strip()
         
-        for app in formatted_results:
-            title_lower = app['title'].lower()
+        for r in results:
+            # Validasi data dasar
+            if not r or not r.get('title') or not r.get('appId'):
+                continue
+            
+            # Parsing data penting
+            installs_count = parse_installs(r.get('installs', '0'))
+            score = r.get('score', 0) if r.get('score') else 0
+            title_lower = r['title'].lower()
+            
+            # --- LOGIKA RANKING BARU ---
             relevance = 0
             
-            # 1. Exact match (1000 points)
-            if search_term == title_lower:
-                relevance = 1000
+            # A. Text Matching Score (Max 100 poin) menggunakan RapidFuzz
+            # Ratio: Seberapa mirip stringnya (Levenshtein distance)
+            # Partial Ratio: Mencocokkan substring terbaik
+            fuzzy_score = fuzz.partial_ratio(search_term, title_lower)
+            relevance += fuzzy_score
             
-            # 2. Exact word in title (800 points)
-            elif f" {search_term} " in f" {title_lower} ":
-                relevance = 800
+            # Bonus untuk Exact Match di awal kalimat (biasanya Official App)
+            if title_lower.startswith(search_term):
+                relevance += 50
             
-            # 3. Title starts with search (700 points)
-            elif title_lower.startswith(search_term):
-                relevance = 700
+            # B. Popularity Boost (SANGAT PENTING)
+            # Logika: Aplikasi dengan 100jt install harus naik drastis
+            if installs_count > 100_000_000:
+                relevance += 200
+            elif installs_count > 10_000_000:
+                relevance += 150
+            elif installs_count > 1_000_000:
+                relevance += 100
+            elif installs_count > 100_000:
+                relevance += 50
             
-            # 4. Title ends with search (600 points)
-            elif title_lower.endswith(search_term):
-                relevance = 600
+            # C. Rating Boost (Kecil saja sebagai pembeda)
+            relevance += (score * 5) # Max 25 poin
             
-            # 5. Search term contained in title (500 points)
-            elif search_term in title_lower:
-                relevance = 500
+            formatted_results.append({
+                'appId': r['appId'],
+                'title': r['title'],
+                'icon': r.get('icon', ''),
+                'score': score,
+                'developer': r.get('developer', ''),
+                'installs': r.get('installs', '0'), # Tampilkan ke user agar yakin
+                'relevance': relevance
+            })
             
-            # 6. Fuzzy matching - word overlap
-            else:
-                search_words = set(search_term.split())
-                title_words = set(title_lower.split())
-                
-                # Common words
-                common = search_words & title_words
-                if common:
-                    relevance = 300 + (len(common) * 50)
-                
-                # Partial word matches (typo tolerance)
-                for s_word in search_words:
-                    if len(s_word) >= 3:
-                        for t_word in title_words:
-                            # Check if words are similar (share 80%+ characters)
-                            if t_word.startswith(s_word[:min(len(s_word), len(t_word))-1]):
-                                relevance = max(relevance, 250)
-            
-            # Boost by app quality (rating 0-5 × 20 = 0-100 points)
-            relevance += int(app['score'] * 20)
-            
-            app['relevance'] = relevance
-        
-        # Sort by relevance (descending)
+        # Sort desc berdasarkan relevance
         formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
         
-        # Clean up and return top 12
-        for app in formatted_results:
-            del app['relevance']
-        
-        return formatted_results[:12]
+        # Return Top 10 cukup
+        return formatted_results[:10]
         
     except Exception as e:
-        import streamlit as st
-        st.error(f"Search error: {str(e)}")
+        # Jangan pakai st.error di sini. Return list kosong dan biarkan app.py yang handle
+        print(f"Error in search utility: {e}") 
         return []
 
 
