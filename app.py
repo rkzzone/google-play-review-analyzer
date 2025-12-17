@@ -177,10 +177,14 @@ if st.session_state.reviews_df is None:
                             display_title = title[:35] + "..." if len(title) > 35 else title
                             st.markdown(f"**{display_title}**", help=title)
                             
-                            # Info Developer & Rating
+                            # Info Developer & Rating - single line dengan truncate
+                            score = app.get('score', 0)
+                            rating_display = f"{score:.2f}" if score else "N/A"
                             dev = app.get('developer', 'Unknown')
-                            display_dev = dev[:15] + "..." if len(dev) > 15 else dev
-                            st.caption(f"⭐ {app.get('score', 'N/A')} | 👨‍💻 {display_dev}")
+                            # Hitung max length untuk developer agar tidak overflow
+                            max_dev_len = 20
+                            display_dev = dev[:max_dev_len] + "..." if len(dev) > max_dev_len else dev
+                            st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}", unsafe_allow_html=False)
 
                         # Tombol Select
                         # Key unik kombinasi ID dan index loop agar tidak bentrok
