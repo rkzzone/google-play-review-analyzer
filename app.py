@@ -117,66 +117,31 @@ if st.session_state.reviews_df is None:
     
     st.subheader("1️⃣ Search for App")
     
-    # Tabs for different search methods
-    search_tab, direct_tab = st.tabs(["🔍 Search by Name", "📦 Direct App ID"])
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        # Input tunggal yang menangani segala jenis input
+        query = st.text_input(
+            "Cari Aplikasi",
+            placeholder="Nama aplikasi, Link Play Store, atau App ID (com.instagram.android)...",
+            label_visibility="collapsed",
+            key="app_search_query"
+        )
+    with col2:
+        search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
     
-    # Pastikan search_app_hybrid sudah diimport di paling atas file
-    # from utils import search_app_hybrid
-
-    # --- TABS UI ---
-    with search_tab:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            # Input tunggal yang menangani segala jenis input
-            query = st.text_input(
-                "Cari Aplikasi",
-                placeholder="Nama (Gojek), Link PlayStore, atau App ID...",
-                label_visibility="collapsed",
-                key="app_search_query"
-            )
-        with col2:
-            search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
-        
-        if search_clicked:
-            if query:
-                with st.spinner("Sedang mencari di Play Store..."):
-                    # Menggunakan fungsi hybrid yang sudah kita buat
-                    results = search_app_hybrid(query)
-                    
-                    if results:
-                        st.session_state.search_results = results
-                        st.success(f"✅ Ditemukan {len(results)} aplikasi!")
-                    else:
-                        st.error("❌ Aplikasi tidak ditemukan. Pastikan ejaan benar atau coba paste Link Play Store-nya.")
-            else:
-                st.warning("⚠️ Masukkan kata kunci pencarian.")
-
-    with direct_tab:
-        st.info("💡 Tab ini adalah opsi alternatif jika pencarian di sebelah gagal.")
-        st.caption("Masukkan ID Aplikasi secara spesifik (Contoh: `com.instagram.android`)")
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            direct_app_id = st.text_input(
-                "Enter App ID",
-                placeholder="e.g., com.instagram.android",
-                label_visibility="collapsed",
-                key="direct_app_id_input"
-            )
-        with col2:
-            if st.button("✅ Gunakan ID", use_container_width=True):
-                if direct_app_id:
-                    # Kita bisa menggunakan search_app_hybrid juga di sini karena dia bisa detect ID
-                    # Ini membuat kode lebih konsisten
-                    with st.spinner("Mengambil detail ID..."):
-                        results = search_app_hybrid(direct_app_id)
-                        if results:
-                            # Langsung auto-select hasil pertama karena ini direct ID
-                            st.session_state.selected_app = results[0]
-                            st.success(f"Berhasil: {results[0]['title']}")
-                            st.rerun()
-                        else:
-                            st.error("❌ App ID tidak valid atau tidak ditemukan.")
+    if search_clicked:
+        if query:
+            with st.spinner("Sedang mencari di Play Store..."):
+                # Menggunakan fungsi hybrid yang sudah kita buat
+                results = search_app_hybrid(query)
+                
+                if results:
+                    st.session_state.search_results = results
+                    st.success(f"✅ Ditemukan {len(results)} aplikasi!")
+                else:
+                    st.error("❌ Aplikasi tidak ditemukan. Pastikan ejaan benar atau coba paste Link Play Store-nya.")
+        else:
+            st.warning("⚠️ Masukkan kata kunci pencarian.")
 
     # --- BAGIAN DISPLAY HASIL (Di luar Tabs agar layout lebar penuh) ---
     if 'search_results' in st.session_state and st.session_state.search_results:
