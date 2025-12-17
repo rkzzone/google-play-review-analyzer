@@ -171,7 +171,7 @@ if st.session_state.reviews_df is None:
                     st.caption(f"👨‍💻 {display_dev}")
                     
                     # Select button
-                    if st.button("Select", key=f"select_{idx}", use_column_width=True, type="primary"):
+                    if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
                         st.session_state.selected_app = app
                         st.success(f"✅ {app['title']}")
                         st.rerun()
