@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import utility functions
 from utils import (
-    search_app_by_name,
+    search_app_hybrid,
     scrape_app_reviews,
     load_sentiment_model,
     predict_sentiment_batch,
@@ -120,41 +120,40 @@ if st.session_state.reviews_df is None:
     # Tabs for different search methods
     search_tab, direct_tab = st.tabs(["🔍 Search by Name", "📦 Direct App ID"])
     
+    # Pastikan search_app_hybrid sudah diimport di paling atas file
+    # from utils import search_app_hybrid
+
+    # --- TABS UI ---
     with search_tab:
         col1, col2 = st.columns([3, 1])
         with col1:
-            app_name = st.text_input(
-                "Enter App Name",
-                placeholder="e.g., Instagram, WhatsApp, TikTok",
+            # Input tunggal yang menangani segala jenis input
+            query = st.text_input(
+                "Cari Aplikasi",
+                placeholder="Nama (Gojek), Link PlayStore, atau App ID...",
                 label_visibility="collapsed",
-                key="app_name_search"
+                key="app_search_query"
             )
         with col2:
-            search_clicked = st.button("🔍 Search", use_container_width=True, type="primary")
+            search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
         
         if search_clicked:
-            if app_name:
-                with st.spinner("Searching for app..."):
-                    results = search_app_by_name(app_name)
+            if query:
+                with st.spinner("Sedang mencari di Play Store..."):
+                    # Menggunakan fungsi hybrid yang sudah kita buat
+                    results = search_app_hybrid(query)
+                    
                     if results:
                         st.session_state.search_results = results
-                        st.success(f"✅ Found {len(results)} apps!")
+                        st.success(f"✅ Ditemukan {len(results)} aplikasi!")
                     else:
-                        st.error("❌ No apps found. Try using 'Direct App ID' tab with exact app ID (e.g., com.instagram.android)")
+                        st.error("❌ Aplikasi tidak ditemukan. Pastikan ejaan benar atau coba paste Link Play Store-nya.")
             else:
-                st.warning("⚠️ Please enter an app name.")
-    
+                st.warning("⚠️ Masukkan kata kunci pencarian.")
+
     with direct_tab:
-        st.info("💡 Use this if app doesn't appear in search results (e.g., Instagram)")
-        st.caption("**Example:** For `https://play.google.com/store/apps/details?id=com.instagram.android`, use `com.instagram.android`")
-        
-        # Popular app IDs helper
-        with st.expander("📋 Popular App IDs"):
-            st.code("Instagram: com.instagram.android")
-            st.code("WhatsApp: com.whatsapp")
-            st.code("Facebook: com.facebook.katana")
-            st.code("TikTok: com.zhiliaoapp.musically")
-            st.code("Twitter/X: com.twitter.android")
+        st.info("💡 Tab ini adalah opsi alternatif jika pencarian di sebelah gagal.")
+        st.caption("Masukkan ID Aplikasi secara spesifik (Contoh: `com.instagram.android`)")
         
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -162,101 +161,68 @@ if st.session_state.reviews_df is None:
                 "Enter App ID",
                 placeholder="e.g., com.instagram.android",
                 label_visibility="collapsed",
-                key="direct_app_id"
+                key="direct_app_id_input"
             )
         with col2:
-            if st.button("✅ Use App ID", use_container_width=True, type="primary"):
+            if st.button("✅ Gunakan ID", use_container_width=True):
                 if direct_app_id:
-                    try:
-                        from google_play_scraper import app as get_app_details
-                        app_details = get_app_details(direct_app_id)
-                        st.session_state.selected_app = {
-                            'appId': direct_app_id,
-                            'title': app_details.get('title', 'Unknown'),
-                            'icon': app_details.get('icon', ''),
-                            'score': app_details.get('score', 0),
-                            'developer': app_details.get('developer', 'Unknown')
-                        }
-                        st.success(f"✅ Selected: {app_details.get('title', direct_app_id)}")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Invalid App ID: {str(e)}")
-                else:
-                    st.warning("⚠️ Please enter an app ID.")
-    
-    # Display search results
+                    # Kita bisa menggunakan search_app_hybrid juga di sini karena dia bisa detect ID
+                    # Ini membuat kode lebih konsisten
+                    with st.spinner("Mengambil detail ID..."):
+                        results = search_app_hybrid(direct_app_id)
+                        if results:
+                            # Langsung auto-select hasil pertama karena ini direct ID
+                            st.session_state.selected_app = results[0]
+                            st.success(f"Berhasil: {results[0]['title']}")
+                            st.rerun()
+                        else:
+                            st.error("❌ App ID tidak valid atau tidak ditemukan.")
+
+    # --- BAGIAN DISPLAY HASIL (Di luar Tabs agar layout lebar penuh) ---
     if 'search_results' in st.session_state and st.session_state.search_results:
         st.markdown("---")
-        st.subheader("2️⃣ Select App from Results")
+        st.subheader("2️⃣ Pilih Aplikasi dari Hasil Pencarian")
         
-        # Display in 2 rows of 6 cards each
-        apps_per_row = 6
-        total_apps = len(st.session_state.search_results)
+        # Konfigurasi Grid (4 Kolom agar lega)
+        apps_per_row = 4
+        results = st.session_state.search_results
         
-        # First row (first 6 apps)
-        if total_apps > 0:
-            cols = st.columns(min(apps_per_row, total_apps))
-            for idx in range(min(apps_per_row, total_apps)):
-                app = st.session_state.search_results[idx]
+        # Loop Dinamis: Menangani berapapun jumlah baris secara otomatis
+        for i in range(0, len(results), apps_per_row):
+            # Mengambil potongan data (chunk) untuk baris ini
+            row_apps = results[i:i+apps_per_row]
+            cols = st.columns(apps_per_row)
+            
+            for idx, app in enumerate(row_apps):
                 with cols[idx]:
-                    with st.container():
-                        # App icon
-                        if app.get('icon'):
-                            st.image(app['icon'], use_column_width=True)
-                        else:
-                            st.markdown("📱")
+                    # Container dengan border (Kartu)
+                    with st.container(border=True):
+                        # Layout Icon di kiri, Teks di kanan
+                        c_img, c_txt = st.columns([1, 2.5])
                         
-                        # App title (truncated if too long)
-                        title = app['title']
-                        display_title = title if len(title) <= 15 else title[:12] + "..."
-                        st.markdown(f"**{display_title}**")
+                        with c_img:
+                            if app.get('icon'):
+                                st.image(app['icon'], use_container_width=True)
+                            else:
+                                st.markdown("📱")
                         
-                        # Rating
-                        st.caption(f"⭐ {app.get('score', 'N/A')}")
-                        
-                        # Developer (truncated)
-                        dev = app.get('developer', 'Unknown')
-                        display_dev = dev if len(dev) <= 12 else dev[:9] + "..."
-                        st.caption(f"👨‍💻 {display_dev}")
-                        
-                        # Select button
-                        if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
+                        with c_txt:
+                            # Title dengan Tooltip (Hover untuk nama lengkap)
+                            title = app['title']
+                            display_title = title[:35] + "..." if len(title) > 35 else title
+                            st.markdown(f"**{display_title}**", help=title)
+                            
+                            # Info Developer & Rating
+                            dev = app.get('developer', 'Unknown')
+                            display_dev = dev[:15] + "..." if len(dev) > 15 else dev
+                            st.caption(f"⭐ {app.get('score', 'N/A')} | 👨‍💻 {display_dev}")
+
+                        # Tombol Select
+                        # Key unik kombinasi ID dan index loop agar tidak bentrok
+                        unique_key = f"btn_{app['appId']}_{i}_{idx}"
+                        if st.button("Analisis", key=unique_key, use_container_width=True, type="secondary"):
                             st.session_state.selected_app = app
-                            st.success(f"✅ {app['title']}")
-                            st.rerun()
-        
-        # Second row (next 6 apps if available)
-        if total_apps > apps_per_row:
-            st.markdown("")  # Spacing
-            cols = st.columns(min(apps_per_row, total_apps - apps_per_row))
-            for idx in range(apps_per_row, min(total_apps, apps_per_row * 2)):
-                app = st.session_state.search_results[idx]
-                col_idx = idx - apps_per_row
-                with cols[col_idx]:
-                    with st.container():
-                        # App icon
-                        if app.get('icon'):
-                            st.image(app['icon'], use_column_width=True)
-                        else:
-                            st.markdown("📱")
-                        
-                        # App title (truncated if too long)
-                        title = app['title']
-                        display_title = title if len(title) <= 15 else title[:12] + "..."
-                        st.markdown(f"**{display_title}**")
-                        
-                        # Rating
-                        st.caption(f"⭐ {app.get('score', 'N/A')}")
-                        
-                        # Developer (truncated)
-                        dev = app.get('developer', 'Unknown')
-                        display_dev = dev if len(dev) <= 12 else dev[:9] + "..."
-                        st.caption(f"👨‍💻 {display_dev}")
-                        
-                        # Select button
-                        if st.button("Select", key=f"select_{idx}", use_container_width=True, type="primary"):
-                            st.session_state.selected_app = app
-                            st.success(f"✅ {app['title']}")
+                            st.toast(f"Memilih aplikasi: {app['title']}")
                             st.rerun()
     
     # Scraping Configuration (after app selected)
