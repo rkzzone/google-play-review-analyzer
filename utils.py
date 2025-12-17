@@ -27,7 +27,6 @@ MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
 import re
 from google_play_scraper import search, app as app_detail
 from rapidfuzz import fuzz
-# Import library baru
 from googlesearch import search as google_web_search
 
 def parse_installs(installs_str):
@@ -37,21 +36,13 @@ def parse_installs(installs_str):
     except ValueError: return 0
 
 def get_id_from_web_search(query):
-    """
-    Fallback: Mencari ID lewat Google.com jika search Play Store gagal.
-    Query: site:play.google.com "Nama App"
-    """
+    """Fallback cari ID lewat Google.com"""
     try:
         # Cari khusus di domain play.google.com
         search_query = f"site:play.google.com/store/apps/details {query}"
-        
-        # Ambil 1 hasil teratas saja (biasanya paling akurat)
-        # sleep_interval=0 agar cepat
         results = list(google_web_search(search_query, num_results=1, lang='id', sleep_interval=0))
-        
         if results:
             url = results[0]
-            # Ekstrak ID dari URL (id=com.xxxxx)
             id_pattern = r'id=([a-zA-Z0-9\._]+)'
             match = re.search(id_pattern, url)
             if match:
@@ -59,13 +50,9 @@ def get_id_from_web_search(query):
                 return match.group(1)
     except Exception as e:
         print(f"Web search error: {e}")
-        return None
     return None
 
 def search_app_hybrid(query, lang='id', country='id'):
-    """
-    Hybrid Search: Link/ID -> Play Store Search -> Google Web Search
-    """
     formatted_results = []
     
     # --- LAPIS 1: DETEKSI INPUT LINK / ID ---
@@ -93,22 +80,23 @@ def search_app_hybrid(query, lang='id', country='id'):
             pass 
 
     # --- LAPIS 2: PLAY STORE SEARCH (INTERNAL) ---
-    found_via_internal = False
+    exact_match_found = False # <--- LOGIKA BARU
+    
     try:
         results = search(query, lang=lang, country=country, n_hits=30)
         search_term = query.lower().strip()
         
         if results:
             for r in results:
-                # SKIP jika ID None (Error Google)
-                if not r.get('appId'):
-                    continue
+                if not r.get('appId'): continue
                 
-                # Cek kemiripan nama untuk memastikan ini bukan aplikasi sampah
-                # Jika nama sangat mirip, kita anggap internal search berhasil
                 title_lower = r['title'].lower()
-                if fuzz.partial_ratio(search_term, title_lower) > 80:
-                     found_via_internal = True
+                
+                # Cek apakah judulnya SAMA PERSIS dengan search user?
+                # Contoh: user cari "instagram", ketemu title "instagram" -> True
+                # user cari "instagram", ketemu "instagram lite" -> False
+                if title_lower == search_term:
+                    exact_match_found = True
 
                 # Proses Ranking
                 installs_count = parse_installs(r.get('installs', '0'))
@@ -119,7 +107,6 @@ def search_app_hybrid(query, lang='id', country='id'):
                 if title_lower.startswith(search_term): relevance += 50
                 if installs_count > 100_000_000: relevance += 200
                 elif installs_count > 10_000_000: relevance += 150
-                
                 relevance += (score * 5)
                 
                 formatted_results.append({
@@ -134,32 +121,29 @@ def search_app_hybrid(query, lang='id', country='id'):
         print(f"Internal search error: {e}")
 
     # --- LAPIS 3: GOOGLE WEB SEARCH (FALLBACK) ---
-    # Jalankan ini HANYA JIKA:
-    # 1. Hasil internal kosong, ATAU
-    # 2. Hasil internal tidak ada yang namanya mirip banget (mungkin ID None semua terbuang)
+    # Jalankan jika hasil kosong ATAU tidak ada yang namanya persis (Exact Match)
+    # Jadi meskipun ketemu "Instagram Lite", dia tetap akan cari "Instagram" di Web.
     
-    should_run_fallback = len(formatted_results) == 0 or not found_via_internal
+    should_run_fallback = len(formatted_results) == 0 or not exact_match_found
     
     if should_run_fallback:
-        print("⚡ Mengaktifkan Google Web Search Fallback...")
+        print(f"⚡ Mengaktifkan Fallback karena exact_match={exact_match_found}...")
         fallback_id = get_id_from_web_search(query)
         
         if fallback_id:
-            # Cek apakah ID ini sudah ada di hasil sebelumnya?
-            # Kalau belum, ambil detailnya dan taruh di URUTAN PERTAMA
+            # Cek duplikasi ID
             existing_ids = [app['appId'] for app in formatted_results]
             
             if fallback_id not in existing_ids:
                 try:
                     r = app_detail(fallback_id, lang=lang, country=country)
-                    # Masukkan sebagai hasil paling relevan (Top 1)
                     formatted_results.insert(0, {
                         'appId': r['appId'],
                         'title': r['title'],
                         'icon': r['icon'],
                         'score': r['score'],
                         'developer': r['developer'],
-                        'relevance': 9999 # Prioritas Tertinggi
+                        'relevance': 9999 # Paksa jadi Juara 1
                     })
                 except:
                     pass
