@@ -224,53 +224,51 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                 )
             
             if not reviews_df.empty:
-                # Single status container for model loading
+                # Single status container for all progress updates
                 status_container = st.empty()
                 
-                # Load Indonesian sentiment model only
+                # Load Indonesian sentiment model
                 status_container.info("📥 Loading Indonesian sentiment model from HuggingFace...")
                 models_dict = load_sentiment_models(load_mode='id')
                 
                 if models_dict and models_dict.get('id'):
-                    status_container.success("✅ Indonesian model loaded!")
+                    # Update: Model loaded
+                    status_container.success("✅ Model loaded! Analyzing sentiment...")
                     
                     # Predict sentiment
-                    with st.spinner("🤖 Analyzing sentiment..."):
-                        predictions, probabilities, detected_langs = predict_sentiment_batch(
-                            reviews_df['review_text'].tolist(),
-                            models_dict,
-                            language_mode='id'
-                        )
-                        reviews_df['predicted_sentiment'] = predictions
-                        reviews_df['detected_language'] = detected_langs
-                        
-                        # Clear GPU memory after sentiment analysis
-                        gc.collect()
+                    predictions, probabilities, detected_langs = predict_sentiment_batch(
+                        reviews_df['review_text'].tolist(),
+                        models_dict,
+                        language_mode='id'
+                    )
+                    reviews_df['predicted_sentiment'] = predictions
+                    reviews_df['detected_language'] = detected_langs
+                    gc.collect()
+                    
+                    # Update: Sentiment done, starting topics
+                    status_container.info("📊 Discovering topics...")
                     
                     # Generate topics
-                    with st.spinner("📊 Discovering topics..."):
-                        topics, topic_model, topic_info = generate_topics(
-                            reviews_df['review_text'].tolist(),
-                            min_topic_size=max(5, len(reviews_df) // 20)
-                        )
-                        
-                        if topics is not None and topic_model is not None:
-                            reviews_df['topic'] = topics
-                            st.session_state.topic_model = topic_model
-                            st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
-                            st.success("✅ Topic modeling complete!")
-                        else:
-                            st.warning("⚠️ Topic modeling skipped or failed. Continuing with sentiment analysis only...")
-                            reviews_df['topic'] = -1
-                            st.session_state.topic_model = None
-                            st.session_state.topic_labels = {}
-                        
-                        # Clear memory after topic modeling
-                        gc.collect()
+                    topics, topic_model, topic_info = generate_topics(
+                        reviews_df['review_text'].tolist(),
+                        min_topic_size=max(5, len(reviews_df) // 20)
+                    )
+                    
+                    if topics is not None and topic_model is not None:
+                        reviews_df['topic'] = topics
+                        st.session_state.topic_model = topic_model
+                        st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
+                        status_container.success("✅ Analysis complete!")
+                    else:
+                        reviews_df['topic'] = -1
+                        st.session_state.topic_model = None
+                        st.session_state.topic_labels = {}
+                        status_container.warning("⚠️ Topic modeling skipped. Sentiment analysis complete!")
+                    
+                    gc.collect()
                     
                     # Store in session state
                     st.session_state.reviews_df = reviews_df
-                    st.success("✅ Analysis complete!")
                     st.rerun()
             else:
                 st.error("❌ Failed to fetch reviews. Please try again.")
