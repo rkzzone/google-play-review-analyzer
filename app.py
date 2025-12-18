@@ -37,8 +37,8 @@ from utils import (
 # =============================================================================
 
 st.set_page_config(
-    page_title="App Review Intelligence Dashboard",
-    page_icon="📱",
+    page_title="Analisis Review Aplikasi Indonesia",
+    page_icon="🇮🇩",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -87,8 +87,9 @@ if 'topic_labels' not in st.session_state:
 # Main Title
 # =============================================================================
 
-st.title("📱 App Review Sentiment & Topic Intelligence Dashboard")
-st.markdown("**Analyze Google Play Store reviews with AI-powered sentiment analysis and topic modeling**")
+st.title("🇮🇩 Dashboard Analisis Review Aplikasi Indonesia")
+st.markdown("**Analisis review Google Play Store dengan AI - Sentiment Analysis & Topic Modeling**")
+st.caption("⚡ Optimized untuk aplikasi Indonesia | Powered by IndoBERT")
 
 # =============================================================================
 # Sidebar - Control Panel
@@ -248,24 +249,6 @@ if st.session_state.reviews_df is None:
         
         st.markdown("---")
         
-        # Language Selection
-        st.markdown("**Language & Model Selection:**")
-        language_option = st.selectbox(
-            "Select Language/Model",
-            options=["Indonesian (🇮🇩)", "English (🇬🇧)"],
-            index=0,
-            help="Choose language model:\n- Indonesian: Optimized for Indonesian reviews (saves memory)\n- English: For English reviews only"
-        )
-        
-        # Map UI selection to internal codes
-        if "Indonesian" in language_option:
-            language_mode = 'id'
-            lang = 'id'
-            country = 'id'
-        else:  # English
-            language_mode = 'en'
-            lang = 'en'
-            country = 'us'
         
         st.markdown("---")
         
@@ -275,36 +258,36 @@ if st.session_state.reviews_df is None:
             if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
                 app_id = selected_app['appId']
                 
-                # Scrape reviews
+                # Always scrape Indonesian reviews
                 if filter_mode == "Review Count Limit":
                     reviews_df = scrape_app_reviews(
                         app_id=app_id,
-                        lang=lang,
-                        country=country,
+                        lang='id',
+                        country='id',
                         filter_mode='count',
                         target_count=review_count
                     )
                 else:
                     reviews_df = scrape_app_reviews(
                         app_id=app_id,
-                        lang=lang,
-                        country=country,
+                        lang='id',
+                        country='id',
                         filter_mode='date_range',
                         start_date=pd.to_datetime(start_date),
                         end_date=pd.to_datetime(end_date)
                     )
                 
                 if not reviews_df.empty:
-                    # Load sentiment models (cached) - only load needed model to save memory
-                    models_dict = load_sentiment_models(load_mode=language_mode)
+                    # Load Indonesian sentiment model only
+                    models_dict = load_sentiment_models(load_mode='id')
                     
-                    if models_dict and (models_dict.get('en') or models_dict.get('id')):
-                        # Predict sentiment with selected language model
-                        with st.spinner(f"🤖 Analyzing sentiment with {language_option} model..."):
+                    if models_dict and models_dict.get('id'):
+                        # Predict sentiment
+                        with st.spinner("🤖 Analyzing sentiment with Indonesian model..."):
                             predictions, probabilities, detected_langs = predict_sentiment_batch(
                                 reviews_df['review_text'].tolist(),
                                 models_dict,
-                                language_mode=language_mode
+                                language_mode='id'
                             )
                             reviews_df['predicted_sentiment'] = predictions
                             reviews_df['detected_language'] = detected_langs

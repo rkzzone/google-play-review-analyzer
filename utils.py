@@ -179,15 +179,15 @@ def search_app_hybrid(query, lang='id', country='id'):
     formatted_results.sort(key=lambda x: x['relevance'], reverse=True)
     return formatted_results[:10]
 
-def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count', 
+def scrape_app_reviews(app_id, lang='id', country='id', filter_mode='count', 
                        target_count=500, start_date=None, end_date=None):
     """
-    Scrape app reviews from Google Play Store with multiple filter modes.
+    Scrape app reviews from Google Play Store (Indonesian by default).
     
     Args:
         app_id (str): Google Play app ID
-        lang (str): Language code
-        country (str): Country code
+        lang (str): Language code (default: 'id' for Indonesian)
+        country (str): Country code (default: 'id' for Indonesia)
         filter_mode (str): 'count' or 'date_range'
         target_count (int): Number of reviews to fetch (for count mode)
         start_date (datetime): Start date for filtering (for date_range mode)
@@ -326,68 +326,44 @@ def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count',
 # =============================================================================
 
 @st.cache_resource(ttl=3600)  # Cache for 1 hour to free memory periodically
-def load_sentiment_models(load_mode='auto'):
+def load_sentiment_models(load_mode='id'):
     """
-    Load sentiment models based on mode.
+    Load Indonesian sentiment model only (memory optimized).
     
     Args:
-        load_mode (str): 'auto' (both), 'id' (Indonesian only), 'en' (English only)
+        load_mode (str): Only 'id' supported for Indonesian
     
     Returns:
-        dict: Dictionary containing models, tokenizers, and device
-            {
-                'en': {'model': model, 'tokenizer': tokenizer},
-                'id': {'model': model, 'tokenizer': tokenizer},
-                'device': device
-            }
+        dict: Dictionary containing model, tokenizer, and device
     """
     try:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         models_dict = {'device': device}
         
-        st.info(f"Loading sentiment models (mode: {load_mode})...")
+        st.info("📥 Loading Indonesian sentiment model...")
         
-        # Load English model (RoBERTa) - only if needed
-        if load_mode in ['auto', 'en']:
-            try:
-                en_model_name = "rkkzone/roberta-sentiment-playstore"
-                st.info(f"📥 Loading English model: {en_model_name}")
-                en_tokenizer = AutoTokenizer.from_pretrained(en_model_name)
-                en_model = AutoModelForSequenceClassification.from_pretrained(en_model_name)
-                en_model = en_model.to(device)
-                en_model.eval()
-                models_dict['en'] = {'model': en_model, 'tokenizer': en_tokenizer}
-                st.success("✅ English model loaded!")
-            except Exception as e:
-                st.warning(f"⚠️ English model failed to load: {e}")
-                models_dict['en'] = None
-        else:
-            models_dict['en'] = None
-        
-        # Load Indonesian model (IndoBERT) - only if needed
-        if load_mode in ['auto', 'id']:
-            try:
-                # Try local first
-                id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
-                if os.path.exists(id_model_path):
-                    st.info(f"📥 Loading Indonesian model from local: {id_model_path}")
-                    id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
-                    id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
-                else:
-                    id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
-                    st.info(f"📥 Loading Indonesian model: {id_model_name}")
-                    id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
-                    id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
-                
-                id_model = id_model.to(device)
-                id_model.eval()
-                models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
-                st.success("✅ Indonesian model loaded!")
-            except Exception as e:
-                st.warning(f"⚠️ Indonesian model failed to load: {e}")
-                models_dict['id'] = None
-        else:
-            models_dict['id'] = None
+        # Load Indonesian model (IndoBERT) only
+        try:
+            # Try local first (faster, no download)
+            id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
+            if os.path.exists(id_model_path):
+                st.info(f"Loading from local: {id_model_path}")
+                id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
+                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
+            else:
+                # Fallback to HuggingFace Hub
+                id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
+                st.info(f"Downloading from HuggingFace: {id_model_name}")
+                id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
+                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
+            
+            id_model = id_model.to(device)
+            id_model.eval()
+            models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
+            st.success("✅ Indonesian model loaded!")
+        except Exception as e:
+            st.error(f"❌ Failed to load Indonesian model: {e}")
+            return None
         
         # Clear GPU cache if available
         if device.type == 'cuda':
@@ -396,25 +372,25 @@ def load_sentiment_models(load_mode='auto'):
         
         return models_dict
     except Exception as e:
-        st.error(f"Error loading sentiment models: {str(e)}")
+        st.error(f"Error loading sentiment model: {str(e)}")
         return None
 
 
 def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id'):
     """
-    Predict sentiment for a batch of texts.
+    Predict sentiment for Indonesian texts.
     
     Args:
         texts (list): List of review texts
-        models_dict (dict): Dictionary containing models for different languages
-        batch_size (int): Batch size for inference (reduced to 16 to save memory)
-        language_mode (str): 'en' or 'id' (no auto-detect)
+        models_dict (dict): Dictionary containing Indonesian model
+        batch_size (int): Batch size for inference
+        language_mode (str): Always 'id' for Indonesian
         
     Returns:
         tuple: (predictions, probabilities, detected_languages)
     """
-    if not models_dict:
-        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
+    if not models_dict or not models_dict.get('id'):
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['id'] * len(texts)
     
     device = models_dict['device']
     all_predictions = []
@@ -423,17 +399,7 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id
     label_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
     
     try:
-        # Select model based on language_mode
-        model_info = models_dict.get(language_mode)
-        if not model_info:
-            # Fallback: use any available model
-            if models_dict.get('id'):
-                model_info = models_dict['id']
-            elif models_dict.get('en'):
-                model_info = models_dict['en']
-            else:
-                return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
-        
+        model_info = models_dict['id']
         model = model_info['model']
         tokenizer = model_info['tokenizer']
         
@@ -467,13 +433,13 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id
                 all_predictions.append(label)
                 all_probabilities.append(prob)
         
-        # All texts use same language
-        detected_languages = [language_mode] * len(texts)
+        # All texts are Indonesian
+        detected_languages = ['id'] * len(texts)
         
         return all_predictions, all_probabilities, detected_languages
     except Exception as e:
         st.error(f"Error in sentiment prediction: {str(e)}")
-        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['id'] * len(texts)
 
 
 # =============================================================================
