@@ -584,41 +584,54 @@ else:
         
         # Filter unknown versions jika checkbox aktif
         if exclude_unknown:
-            unknown_patterns = ['unknown', 'varies', 'variable', 'n/a', 'null', 'none', '0', '']
+            # Pattern untuk unknown versions (case insensitive)
+            unknown_patterns = ['unknown', 'varies with device', 'varies', 'variable', 'n/a', 'null', 'none']
+            
+            # Filter dengan handling NaN dan case insensitive
+            for pattern in unknown_patterns:
+                df_version = df_version[
+                    ~df_version['app_version'].astype(str).str.lower().str.contains(pattern, na=False)
+                ]
+            
+            # Filter version yang kosong atau hanya angka 0
             df_version = df_version[
-                ~df_version['app_version'].str.lower().str.contains('|'.join(unknown_patterns), na=False)
+                (df_version['app_version'].astype(str).str.strip() != '') & 
+                (df_version['app_version'].astype(str) != '0')
             ]
         
-        if not df_version.empty:
+        if not df_version.empty and len(df_version) > 0:
             version_sentiment = df_version.groupby(['app_version', 'predicted_sentiment']).size().unstack(fill_value=0)
             
-            # Get top 10 versions by review count
-            top_versions = df_version['app_version'].value_counts().head(10).index
-            version_sentiment_top = version_sentiment.loc[version_sentiment.index.isin(top_versions)]
-            
-            fig_version = go.Figure()
-            
-            colors = {'Positive': '#2ecc71', 'Neutral': '#95a5a6', 'Negative': '#e74c3c'}
-            for sentiment in ['Negative', 'Neutral', 'Positive']:
-                if sentiment in version_sentiment_top.columns:
-                    fig_version.add_trace(go.Bar(
-                        name=sentiment,
-                        x=version_sentiment_top.index,
-                        y=version_sentiment_top[sentiment],
-                        marker_color=colors.get(sentiment, '#3498db')
-                    ))
-            
-            fig_version.update_layout(
-                barmode='stack',
-                xaxis_title="App Version",
-                yaxis_title="Number of Reviews",
-                height=300,
-                margin=dict(l=20, r=20, t=10, b=20)
-            )
-            
-            st.plotly_chart(fig_version, use_container_width=True)
+            if not version_sentiment.empty:
+                # Get top 10 versions by review count
+                top_versions = df_version['app_version'].value_counts().head(10).index
+                version_sentiment_top = version_sentiment.loc[version_sentiment.index.isin(top_versions)]
+                
+                fig_version = go.Figure()
+                
+                colors = {'Positive': '#2ecc71', 'Neutral': '#95a5a6', 'Negative': '#e74c3c'}
+                for sentiment in ['Negative', 'Neutral', 'Positive']:
+                    if sentiment in version_sentiment_top.columns:
+                        fig_version.add_trace(go.Bar(
+                            name=sentiment,
+                            x=version_sentiment_top.index,
+                            y=version_sentiment_top[sentiment],
+                            marker_color=colors.get(sentiment, '#3498db')
+                        ))
+                
+                fig_version.update_layout(
+                    barmode='stack',
+                    xaxis_title="App Version",
+                    yaxis_title="Number of Reviews",
+                    height=300,
+                    margin=dict(l=20, r=20, t=10, b=20)
+                )
+                
+                st.plotly_chart(fig_version, use_container_width=True)
+            else:
+                st.info("No version data available")
         else:
-            st.info("No version data available after filtering")
+            st.warning(f"All {len(df)} reviews filtered out. Try unchecking 'Exclude unknown versions'.")
     
     with col_right:
         st.markdown("#### 🔍 Negative Review Keywords")
