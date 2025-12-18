@@ -314,20 +314,6 @@ if 'search_results' in st.session_state and st.session_state.search_results:
 
 # Show analysis results below if available
 if st.session_state.reviews_df is not None:
-        st.markdown("---")
-        st.markdown("## ✨ Features")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("### 🎯 Sentiment Analysis")
-            st.write("AI-powered sentiment classification using fine-tuned RoBERTa model")
-        with col2:
-            st.markdown("### 📊 Topic Modeling")
-            st.write("Discover key themes and issues with BERTopic")
-        with col3:
-            st.markdown("### 🔍 Deep Insights")
-            st.write("Version analysis, n-grams, and customer voice exploration")
-    
-else:
     # Apply global sentiment filter
     if 'sentiment_filter' in locals():
         df = filter_by_sentiment(st.session_state.reviews_df, sentiment_filter)
