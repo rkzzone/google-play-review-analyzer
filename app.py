@@ -1,6 +1,7 @@
 """
 App Review Sentiment & Topic Intelligence Dashboard
 Production-ready Streamlit application for analyzing Google Play Store reviews
+Memory-optimized for Streamlit Cloud
 """
 
 import streamlit as st
@@ -12,6 +13,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import os
 import sys
+import gc  # Memory management
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -297,8 +299,8 @@ if st.session_state.reviews_df is None:
                     )
                 
                 if not reviews_df.empty:
-                    # Load sentiment models (cached)
-                    models_dict = load_sentiment_models()
+                    # Load sentiment models (cached) - only load needed model to save memory
+                    models_dict = load_sentiment_models(load_mode=language_mode)
                     
                     if models_dict and (models_dict.get('en') or models_dict.get('id')):
                         # Predict sentiment with multi-language support
@@ -315,6 +317,9 @@ if st.session_state.reviews_df is None:
                             lang_counts = pd.Series(detected_langs).value_counts()
                             lang_display = " | ".join([f"{lang.upper()}: {count}" for lang, count in lang_counts.items()])
                             st.info(f"🌐 Detected Languages: {lang_display}")
+                            
+                            # Clear GPU memory after sentiment analysis
+                            gc.collect()
                         
                         # Generate topics
                         with st.spinner("📊 Discovering topics..."):
@@ -333,6 +338,9 @@ if st.session_state.reviews_df is None:
                                 reviews_df['topic'] = -1  # Assign all to "other" topic
                                 st.session_state.topic_model = None
                                 st.session_state.topic_labels = {}
+                            
+                            # Clear memory after topic modeling
+                            gc.collect()
                         
                         # Store in session state
                         st.session_state.reviews_df = reviews_df

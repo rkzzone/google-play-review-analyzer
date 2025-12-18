@@ -16,6 +16,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from rapidfuzz import fuzz
 import re
 from langdetect import detect, LangDetectException
+import gc  # Garbage collection for memory management
 
 # Base path configuration - use script directory
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -325,12 +326,13 @@ def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count',
 # Sentiment Analysis Functions
 # =============================================================================
 
-@st.cache_resource
-@st.cache_resource
-def load_sentiment_models():
+@st.cache_resource(ttl=3600)  # Cache for 1 hour to free memory periodically
+def load_sentiment_models(load_mode='auto'):
     """
-    Load both English and Indonesian sentiment models.
-    Uses caching to load only once.
+    Load sentiment models based on mode.
+    
+    Args:
+        load_mode (str): 'auto' (both), 'id' (Indonesian only), 'en' (English only)
     
     Returns:
         dict: Dictionary containing models, tokenizers, and device
@@ -344,43 +346,54 @@ def load_sentiment_models():
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         models_dict = {'device': device}
         
-        st.info("Loading sentiment analysis models...")
+        st.info(f"Loading sentiment models (mode: {load_mode})...")
         
-        # Load English model (RoBERTa)
-        try:
-            en_model_name = "rkkzone/roberta-sentiment-playstore"
-            st.info(f"📥 Loading English model: {en_model_name}")
-            en_tokenizer = AutoTokenizer.from_pretrained(en_model_name)
-            en_model = AutoModelForSequenceClassification.from_pretrained(en_model_name)
-            en_model = en_model.to(device)
-            en_model.eval()
-            models_dict['en'] = {'model': en_model, 'tokenizer': en_tokenizer}
-            st.success("✅ English model loaded!")
-        except Exception as e:
-            st.warning(f"⚠️ English model failed to load: {e}")
+        # Load English model (RoBERTa) - only if needed
+        if load_mode in ['auto', 'en']:
+            try:
+                en_model_name = "rkkzone/roberta-sentiment-playstore"
+                st.info(f"📥 Loading English model: {en_model_name}")
+                en_tokenizer = AutoTokenizer.from_pretrained(en_model_name)
+                en_model = AutoModelForSequenceClassification.from_pretrained(en_model_name)
+                en_model = en_model.to(device)
+                en_model.eval()
+                models_dict['en'] = {'model': en_model, 'tokenizer': en_tokenizer}
+                st.success("✅ English model loaded!")
+            except Exception as e:
+                st.warning(f"⚠️ English model failed to load: {e}")
+                models_dict['en'] = None
+        else:
             models_dict['en'] = None
         
-        # Load Indonesian model (IndoBERT)
-        try:
-            # Try local first
-            id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
-            if os.path.exists(id_model_path):
-                st.info(f"📥 Loading Indonesian model from local: {id_model_path}")
-                id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
-                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
-            else:
-                id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
-                st.info(f"📥 Loading Indonesian model: {id_model_name}")
-                id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
-                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
-            
-            id_model = id_model.to(device)
-            id_model.eval()
-            models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
-            st.success("✅ Indonesian model loaded!")
-        except Exception as e:
-            st.warning(f"⚠️ Indonesian model failed to load: {e}")
+        # Load Indonesian model (IndoBERT) - only if needed
+        if load_mode in ['auto', 'id']:
+            try:
+                # Try local first
+                id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
+                if os.path.exists(id_model_path):
+                    st.info(f"📥 Loading Indonesian model from local: {id_model_path}")
+                    id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
+                    id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
+                else:
+                    id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
+                    st.info(f"📥 Loading Indonesian model: {id_model_name}")
+                    id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
+                    id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
+                
+                id_model = id_model.to(device)
+                id_model.eval()
+                models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
+                st.success("✅ Indonesian model loaded!")
+            except Exception as e:
+                st.warning(f"⚠️ Indonesian model failed to load: {e}")
+                models_dict['id'] = None
+        else:
             models_dict['id'] = None
+        
+        # Clear GPU cache if available
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+        gc.collect()
         
         return models_dict
     except Exception as e:
@@ -413,14 +426,14 @@ def detect_language(text):
         return 'unknown'
 
 
-def predict_sentiment_batch(texts, models_dict, batch_size=32, language_mode='auto'):
+def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='auto'):  # Reduced batch size
     """
     Predict sentiment for a batch of texts with multi-language support.
     
     Args:
         texts (list): List of review texts
         models_dict (dict): Dictionary containing models for different languages
-        batch_size (int): Batch size for inference
+        batch_size (int): Batch size for inference (reduced to 16 to save memory)
         language_mode (str): 'auto', 'en', or 'id'
         
     Returns:
@@ -639,6 +652,10 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
             all_topics[valid_idx] = fitted_topics[i]
         
         st.success(f"✅ Found {unique_topics} topics from {len(cleaned_texts)} reviews!")
+        
+        # Clear memory after topic modeling
+        gc.collect()
+        
         return all_topics, topic_model, topic_info
         
     except Exception as e:
@@ -646,6 +663,9 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         st.error(f"Error type: {type(e).__name__}")
         import traceback
         st.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Clear memory even on error
+        gc.collect()
         return None, None, None
 
 
