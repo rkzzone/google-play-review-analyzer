@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import (
     search_app_hybrid,
     scrape_app_reviews,
-    load_sentiment_model,
+    load_sentiment_models,
     predict_sentiment_batch,
     generate_topics,
     get_topic_labels,
@@ -246,15 +246,36 @@ if st.session_state.reviews_df is None:
         
         st.markdown("---")
         
+        # Language Selection
+        st.markdown("**Language & Model Selection:**")
+        language_option = st.selectbox(
+            "Select Language/Model",
+            options=["Auto-Detect (🇮🇩 Indonesian + 🇬🇧 English)", "Indonesian Only (🇮🇩)", "English Only (🇬🇧)"],
+            index=0,
+            help="Choose how to analyze reviews:\n- Auto: Automatically detect language per review\n- Indonesian: Use Indonesian model for all reviews\n- English: Use English model for all reviews"
+        )
+        
+        # Map UI selection to internal codes
+        if "Auto" in language_option:
+            language_mode = 'auto'
+            lang = 'id'  # Default scraping to Indonesian
+            country = 'id'
+        elif "Indonesian" in language_option:
+            language_mode = 'id'
+            lang = 'id'
+            country = 'id'
+        else:  # English
+            language_mode = 'en'
+            lang = 'en'
+            country = 'us'
+        
+        st.markdown("---")
+        
         # Analyze button
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
                 app_id = selected_app['appId']
-                
-                # Default to Indonesian language and ID country for Indonesian market
-                lang = 'id'
-                country = 'id'
                 
                 # Scrape reviews
                 if filter_mode == "Review Count Limit":
@@ -276,19 +297,24 @@ if st.session_state.reviews_df is None:
                     )
                 
                 if not reviews_df.empty:
-                    # Load sentiment model
-                    model, tokenizer, device = load_sentiment_model()
+                    # Load sentiment models (cached)
+                    models_dict = load_sentiment_models()
                     
-                    if model is not None:
-                        # Predict sentiment
-                        with st.spinner("🤖 Analyzing sentiment..."):
-                            predictions, probabilities = predict_sentiment_batch(
+                    if models_dict and (models_dict.get('en') or models_dict.get('id')):
+                        # Predict sentiment with multi-language support
+                        with st.spinner("🤖 Analyzing sentiment with multi-language models..."):
+                            predictions, probabilities, detected_langs = predict_sentiment_batch(
                                 reviews_df['review_text'].tolist(),
-                                model,
-                                tokenizer,
-                                device
+                                models_dict,
+                                language_mode=language_mode
                             )
                             reviews_df['predicted_sentiment'] = predictions
+                            reviews_df['detected_language'] = detected_langs
+                            
+                            # Display language distribution
+                            lang_counts = pd.Series(detected_langs).value_counts()
+                            lang_display = " | ".join([f"{lang.upper()}: {count}" for lang, count in lang_counts.items()])
+                            st.info(f"🌐 Detected Languages: {lang_display}")
                         
                         # Generate topics
                         with st.spinner("📊 Discovering topics..."):

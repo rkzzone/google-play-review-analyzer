@@ -15,6 +15,7 @@ from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
 from rapidfuzz import fuzz
 import re
+from langdetect import detect, LangDetectException
 
 # Base path configuration - use script directory
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -325,74 +326,148 @@ def scrape_app_reviews(app_id, lang='en', country='us', filter_mode='count',
 # =============================================================================
 
 @st.cache_resource
-def load_sentiment_model():
+@st.cache_resource
+def load_sentiment_models():
     """
-    Load the fine-tuned RoBERTa model and tokenizer.
+    Load both English and Indonesian sentiment models.
     Uses caching to load only once.
     
-    Tries to load from local path first, then falls back to Hugging Face Hub.
-    
     Returns:
-        tuple: (model, tokenizer, device)
+        dict: Dictionary containing models, tokenizers, and device
+            {
+                'en': {'model': model, 'tokenizer': tokenizer},
+                'id': {'model': model, 'tokenizer': tokenizer},
+                'device': device
+            }
     """
     try:
-        # Try local path first (for local development)
-        if os.path.exists(MODEL_PATH):
-            st.info("Loading Indonesian sentiment model from local path...")
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-            model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
-        else:
-            # Fallback: Load from Hugging Face Hub (for Streamlit Cloud)
-            st.info("Local model not found. Loading Indonesian model from Hugging Face Hub...")
-            model_name = "rkkzone/roberta-sentiment-indonesian-playstore"  # Indonesian fine-tuned model on HF
-            
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModelForSequenceClassification.from_pretrained(model_name)
-                st.success("✅ Indonesian sentiment model loaded from Hugging Face Hub!")
-            except Exception as hf_error:
-                # If HF model not found, use IndoBERT base model as fallback
-                st.warning(f"Hugging Face model not found. Using base IndoBERT model instead.")
-                st.warning("⚠️ This model is NOT fine-tuned for sentiment analysis!")
-                tokenizer = AutoTokenizer.from_pretrained("indobenchmark/indobert-base-p1")
-                model = AutoModelForSequenceClassification.from_pretrained("indobenchmark/indobert-base-p1", num_labels=3)
-        
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = model.to(device)
-        model.eval()
+        models_dict = {'device': device}
         
-        return model, tokenizer, device
+        st.info("Loading sentiment analysis models...")
+        
+        # Load English model (RoBERTa)
+        try:
+            en_model_name = "rkkzone/roberta-sentiment-playstore"
+            st.info(f"📥 Loading English model: {en_model_name}")
+            en_tokenizer = AutoTokenizer.from_pretrained(en_model_name)
+            en_model = AutoModelForSequenceClassification.from_pretrained(en_model_name)
+            en_model = en_model.to(device)
+            en_model.eval()
+            models_dict['en'] = {'model': en_model, 'tokenizer': en_tokenizer}
+            st.success("✅ English model loaded!")
+        except Exception as e:
+            st.warning(f"⚠️ English model failed to load: {e}")
+            models_dict['en'] = None
+        
+        # Load Indonesian model (IndoBERT)
+        try:
+            # Try local first
+            id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
+            if os.path.exists(id_model_path):
+                st.info(f"📥 Loading Indonesian model from local: {id_model_path}")
+                id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
+                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
+            else:
+                id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
+                st.info(f"📥 Loading Indonesian model: {id_model_name}")
+                id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
+                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
+            
+            id_model = id_model.to(device)
+            id_model.eval()
+            models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
+            st.success("✅ Indonesian model loaded!")
+        except Exception as e:
+            st.warning(f"⚠️ Indonesian model failed to load: {e}")
+            models_dict['id'] = None
+        
+        return models_dict
     except Exception as e:
-        st.error(f"Error loading sentiment model: {str(e)}")
-        return None, None, None
+        st.error(f"Error loading sentiment models: {str(e)}")
+        return None
 
 
-def predict_sentiment_batch(texts, model, tokenizer, device, batch_size=32):
+def detect_language(text):
     """
-    Predict sentiment for a batch of texts.
+    Detect language of text using langdetect.
+    
+    Args:
+        text (str): Input text
+        
+    Returns:
+        str: Language code ('en', 'id', or 'unknown')
+    """
+    try:
+        if not text or len(text.strip()) < 10:
+            return 'unknown'
+        lang = detect(text)
+        # Map to our supported languages
+        if lang == 'en':
+            return 'en'
+        elif lang == 'id':
+            return 'id'
+        else:
+            return 'unknown'
+    except LangDetectException:
+        return 'unknown'
+
+
+def predict_sentiment_batch(texts, models_dict, batch_size=32, language_mode='auto'):
+    """
+    Predict sentiment for a batch of texts with multi-language support.
     
     Args:
         texts (list): List of review texts
-        model: Fine-tuned RoBERTa model
-        tokenizer: RoBERTa tokenizer
-        device: torch device
+        models_dict (dict): Dictionary containing models for different languages
         batch_size (int): Batch size for inference
+        language_mode (str): 'auto', 'en', or 'id'
         
     Returns:
-        tuple: (predictions, probabilities)
+        tuple: (predictions, probabilities, detected_languages)
     """
+    if not models_dict:
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['unknown'] * len(texts)
+    
+    device = models_dict['device']
     all_predictions = []
     all_probabilities = []
+    detected_languages = []
     
     label_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
     
     try:
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
+        for text in texts:
+            # Detect language or use specified mode
+            if language_mode == 'auto':
+                lang = detect_language(text)
+                # Default to Indonesian if unknown
+                if lang == 'unknown':
+                    lang = 'id' if models_dict.get('id') else 'en'
+            else:
+                lang = language_mode
             
-            # Tokenize
+            detected_languages.append(lang)
+            
+            # Select appropriate model
+            model_info = models_dict.get(lang)
+            if not model_info:
+                # Fallback: use any available model
+                if models_dict.get('id'):
+                    model_info = models_dict['id']
+                elif models_dict.get('en'):
+                    model_info = models_dict['en']
+                else:
+                    all_predictions.append('Neutral')
+                    all_probabilities.append([0.0, 1.0, 0.0])
+                    continue
+            
+            model = model_info['model']
+            tokenizer = model_info['tokenizer']
+            
+            # Tokenize single text
             inputs = tokenizer(
-                batch_texts,
+                text,
                 padding=True,
                 truncation=True,
                 max_length=128,
@@ -407,22 +482,19 @@ def predict_sentiment_batch(texts, model, tokenizer, device, batch_size=32):
                 outputs = model(**inputs)
                 logits = outputs.logits
                 probs = torch.softmax(logits, dim=-1)
-                predictions = torch.argmax(logits, dim=-1)
+                prediction = torch.argmax(logits, dim=-1).item()
             
-            # Convert to CPU and numpy
-            predictions = predictions.cpu().numpy()
-            probs = probs.cpu().numpy()
+            # Convert to label
+            label = label_map[prediction]
+            prob = probs[0].cpu().numpy()
             
-            # Map to labels
-            batch_labels = [label_map[p] for p in predictions]
-            
-            all_predictions.extend(batch_labels)
-            all_probabilities.extend(probs)
+            all_predictions.append(label)
+            all_probabilities.append(prob)
         
-        return all_predictions, all_probabilities
+        return all_predictions, all_probabilities, detected_languages
     except Exception as e:
         st.error(f"Error in sentiment prediction: {str(e)}")
-        return [], []
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['unknown'] * len(texts)
 
 
 # =============================================================================
