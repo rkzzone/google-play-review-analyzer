@@ -328,7 +328,7 @@ def scrape_app_reviews(app_id, lang='id', country='id', filter_mode='count',
 @st.cache_resource(ttl=3600)  # Cache for 1 hour to free memory periodically
 def load_sentiment_models(load_mode='id'):
     """
-    Load Indonesian sentiment model only (memory optimized).
+    Load Indonesian sentiment model from HuggingFace Hub.
     
     Args:
         load_mode (str): Only 'id' supported for Indonesian
@@ -340,22 +340,14 @@ def load_sentiment_models(load_mode='id'):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         models_dict = {'device': device}
         
-        st.info("📥 Loading Indonesian sentiment model...")
+        st.info("📥 Loading Indonesian sentiment model from HuggingFace...")
         
-        # Load Indonesian model (IndoBERT) only
+        # Load Indonesian model from HuggingFace Hub
         try:
-            # Try local first (faster, no download)
-            id_model_path = os.path.join(BASE_PATH, 'saved_model_id')
-            if os.path.exists(id_model_path):
-                st.info(f"Loading from local: {id_model_path}")
-                id_tokenizer = AutoTokenizer.from_pretrained(id_model_path)
-                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_path)
-            else:
-                # Fallback to HuggingFace Hub
-                id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
-                st.info(f"Downloading from HuggingFace: {id_model_name}")
-                id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
-                id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
+            id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
+            st.info(f"Downloading: {id_model_name}")
+            id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
+            id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
             
             id_model = id_model.to(device)
             id_model.eval()

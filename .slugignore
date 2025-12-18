@@ -1,11 +1,15 @@
 # Files to exclude from Streamlit Cloud deployment
 # This reduces slug size and memory usage
 
+# Model files (download from HuggingFace instead)
+saved_model/
+saved_model_id/
+training_output/
+training_output_id/
+
 # Training files (not needed for production)
 training_sentiment.ipynb
 training_sentiment_id.ipynb
-training_output/
-training_output_id/
 upload_to_hf.py
 quick_upload_indonesian.py
 

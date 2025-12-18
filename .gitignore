@@ -30,9 +30,11 @@ ENV/
 .ipynb_checkpoints
 *.ipynb_checkpoints/
 
-# Model files (large files)
+# Model files (large files) - Download from HuggingFace instead
 saved_model/
+saved_model_id/
 training_output/
+training_output_id/
 logs/
 *.safetensors
 *.bin
