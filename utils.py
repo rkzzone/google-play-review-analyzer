@@ -473,11 +473,9 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
     try:
         # Validate input
         if not texts or len(texts) == 0:
-            st.warning("⚠️ No texts provided for topic modeling")
             return None, None, None
             
         if len(texts) < min_topic_size:
-            st.warning(f"⚠️ Not enough reviews for topic modeling (need at least {min_topic_size}, got {len(texts)})")
             return None, None, None
         
         # Preprocess texts and keep track of valid indices
@@ -505,7 +503,6 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
                 valid_indices.append(idx)
         
         if len(cleaned_texts) < min_topic_size:
-            st.warning(f"⚠️ Not enough valid texts after preprocessing (need at least {min_topic_size}, got {len(cleaned_texts)} from {len(texts)} reviews)")
             return None, None, None
         
         # Indonesian stopwords for better topic modeling
@@ -530,8 +527,6 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         )
         
         # Initialize BERTopic with multilingual embedding model
-        st.info(f"🔍 Initializing topic model for {len(cleaned_texts)} reviews...")
-        
         # Try multilingual model first, fallback to smaller if fails
         try:
             topic_model = BERTopic(
@@ -543,7 +538,6 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
                 verbose=False
             )
         except Exception as embed_error:
-            st.warning(f"⚠️ Multilingual model failed, using lightweight fallback: {embed_error}")
             topic_model = BERTopic(
                 embedding_model='all-MiniLM-L6-v2',  # Smaller, faster fallback
                 vectorizer_model=vectorizer_model,
@@ -554,7 +548,6 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
             )
         
         # Fit model
-        st.info(f"📊 Analyzing topics...")
         fitted_topics, _ = topic_model.fit_transform(cleaned_texts)
         
         # Get topic info
@@ -563,7 +556,6 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         # Check if topics were found
         unique_topics = len([t for t in set(fitted_topics) if t != -1])
         if unique_topics == 0:
-            st.warning("⚠️ No distinct topics found. Reviews may be too similar.")
             return None, None, None
         
         # Map fitted topics back to original indices
@@ -571,19 +563,12 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         for i, valid_idx in enumerate(valid_indices):
             all_topics[valid_idx] = fitted_topics[i]
         
-        st.success(f"✅ Found {unique_topics} topics from {len(cleaned_texts)} reviews!")
-        
         # Clear memory after topic modeling
         gc.collect()
         
         return all_topics, topic_model, topic_info
         
     except Exception as e:
-        st.error(f"❌ Error in topic modeling: {str(e)}")
-        st.error(f"Error type: {type(e).__name__}")
-        import traceback
-        st.error(f"Traceback: {traceback.format_exc()}")
-        
         # Clear memory even on error
         gc.collect()
         return None, None, None

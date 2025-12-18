@@ -488,7 +488,7 @@ if st.session_state.reviews_df is not None:
     
     st.subheader("🗂️ Topic Modeling & Customer Voice")
     
-    if 'topic' in df.columns and st.session_state.topic_labels:
+    if 'topic' in df.columns and st.session_state.topic_labels and len(st.session_state.topic_labels) > 0:
         # Topic selector
         topic_options = ["All Topics"] + [f"{k}: {v}" for k, v in st.session_state.topic_labels.items() if k != -1]
         selected_topic_display = st.selectbox("Select Topic to Explore:", topic_options)
