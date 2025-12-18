@@ -633,3 +633,276 @@ def filter_by_sentiment(df, selected_sentiments):
         return df
     
     return df[df['predicted_sentiment'].isin(selected_sentiments)]
+
+
+# =============================================================================
+# PDF Report Generation
+# =============================================================================
+
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfgen import canvas
+from io import BytesIO
+from datetime import datetime
+
+
+def generate_pdf_report(df, app_info, topic_labels):
+    """
+    Generate professional consultant-style PDF report in 16:9 format.
+    
+    Args:
+        df (pd.DataFrame): Reviews DataFrame with analysis results
+        app_info (dict): App information
+        topic_labels (dict): Topic labels mapping
+        
+    Returns:
+        BytesIO: PDF file buffer
+    """
+    buffer = BytesIO()
+    
+    # 16:9 landscape format (presentation style)
+    page_width = 11 * inch
+    page_height = 6.1875 * inch  # 16:9 ratio
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=(page_width, page_height),
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch
+    )
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1f77b4'),
+        spaceAfter=12,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#555555'),
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        textColor=colors.HexColor('#1f77b4'),
+        spaceAfter=10,
+        fontName='Helvetica-Bold'
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=10,
+        leading=14
+    )
+    
+    # Story elements
+    story = []
+    
+    # === PAGE 1: Cover Page ===
+    story.append(Spacer(1, 1.5*inch))
+    story.append(Paragraph("App Review Intelligence Report", title_style))
+    story.append(Paragraph(f"<b>{app_info['title']}</b>", subtitle_style))
+    story.append(Paragraph(f"by {app_info.get('developer', 'Unknown')}", body_style))
+    story.append(Spacer(1, 0.3*inch))
+    story.append(Paragraph(f"Analysis Date: {datetime.now().strftime('%B %d, %Y')}", body_style))
+    story.append(Paragraph(f"Total Reviews Analyzed: {len(df):,}", body_style))
+    story.append(PageBreak())
+    
+    # === PAGE 2: Executive Summary ===
+    story.append(Paragraph("Executive Summary", heading_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Calculate metrics
+    total_reviews = len(df)
+    avg_rating = df['rating'].mean()
+    sentiment_counts = df['predicted_sentiment'].value_counts()
+    pos_pct = (sentiment_counts.get('Positive', 0) / len(df)) * 100
+    neu_pct = (sentiment_counts.get('Neutral', 0) / len(df)) * 100
+    neg_pct = (sentiment_counts.get('Negative', 0) / len(df)) * 100
+    
+    # Summary table
+    summary_data = [
+        ['Metric', 'Value', 'Insight'],
+        ['Total Reviews', f'{total_reviews:,}', f'Sample size: {"Excellent" if total_reviews > 1000 else "Good" if total_reviews > 500 else "Moderate"}'],
+        ['Average Rating', f'{avg_rating:.2f} / 5.0', f'{"Strong" if avg_rating >= 4.0 else "Good" if avg_rating >= 3.5 else "Needs improvement"}'],
+        ['Sentiment Distribution', 
+         f'Pos: {pos_pct:.1f}% | Neu: {neu_pct:.1f}% | Neg: {neg_pct:.1f}%',
+         f'Overall: {"Positive" if pos_pct >= 50 else "Neutral" if pos_pct >= 30 else "Negative"}']
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[2*inch, 3*inch, 4*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')])
+    ]))
+    
+    story.append(summary_table)
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Key Insights
+    story.append(Paragraph("<b>Key Insights:</b>", body_style))
+    insights = []
+    
+    if avg_rating >= 4.0:
+        insights.append(f"\u2022 Users are highly satisfied with an average rating of {avg_rating:.2f}/5.0")
+    elif avg_rating >= 3.5:
+        insights.append(f"\u2022 Overall satisfaction is good ({avg_rating:.2f}/5.0) with room for improvement")
+    else:
+        insights.append(f"\u2022 Rating of {avg_rating:.2f}/5.0 indicates significant user concerns requiring attention")
+    
+    if pos_pct >= 60:
+        insights.append(f"\u2022 Strong positive sentiment ({pos_pct:.1f}%) indicates excellent user experience")
+    elif neg_pct >= 30:
+        insights.append(f"\u2022 High negative sentiment ({neg_pct:.1f}%) requires immediate action")
+    
+    if neu_pct >= 30:
+        insights.append(f"\u2022 Significant neutral sentiment ({neu_pct:.1f}%) suggests opportunity to convert users to advocates")
+    
+    for insight in insights:
+        story.append(Paragraph(insight, body_style))
+    
+    story.append(PageBreak())
+    
+    # === PAGE 3: Sentiment Analysis Detail ===
+    story.append(Paragraph("Sentiment Analysis Breakdown", heading_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    sentiment_data = [
+        ['Sentiment', 'Count', 'Percentage', 'Recommendation'],
+        ['Positive', 
+         f'{sentiment_counts.get("Positive", 0):,}', 
+         f'{pos_pct:.1f}%',
+         'Leverage these reviews for marketing'],
+        ['Neutral', 
+         f'{sentiment_counts.get("Neutral", 0):,}', 
+         f'{neu_pct:.1f}%',
+         'Identify features to improve engagement'],
+        ['Negative', 
+         f'{sentiment_counts.get("Negative", 0):,}', 
+         f'{neg_pct:.1f}%',
+         'Priority: Address critical issues']
+    ]
+    
+    sentiment_table = Table(sentiment_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 4.5*inch])
+    sentiment_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2ecc71')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#d4edda')),
+        ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#fff3cd')),
+        ('BACKGROUND', (0, 3), (0, 3), colors.HexColor('#f8d7da'))
+    ]))
+    
+    story.append(sentiment_table)
+    story.append(PageBreak())
+    
+    # === PAGE 4: Top Topics ===
+    if 'topic' in df.columns and topic_labels:
+        story.append(Paragraph("Top Discussion Topics", heading_style))
+        story.append(Spacer(1, 0.2*inch))
+        
+        topic_counts = df['topic'].value_counts().head(8)
+        topic_data = [['Rank', 'Topic', 'Mentions', '% of Reviews']]
+        
+        for rank, (topic_num, count) in enumerate(topic_counts.items(), 1):
+            topic_name = topic_labels.get(topic_num, f'Topic {topic_num}')
+            pct = (count / len(df)) * 100
+            topic_data.append([
+                str(rank),
+                topic_name[:60] + '...' if len(topic_name) > 60 else topic_name,
+                f'{count:,}',
+                f'{pct:.1f}%'
+            ])
+        
+        topic_table = Table(topic_data, colWidths=[0.7*inch, 6*inch, 1.3*inch, 1*inch])
+        topic_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')])
+        ]))
+        
+        story.append(topic_table)
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph("<b>Strategic Recommendation:</b> Focus product development on top 3 topics which represent majority of user concerns.", body_style))
+        story.append(PageBreak())
+    
+    # === PAGE 5: Recommendations ===
+    story.append(Paragraph("Strategic Recommendations", heading_style))
+    story.append(Spacer(1, 0.3*inch))
+    
+    recommendations = []
+    
+    if neg_pct >= 20:
+        negative_reviews = df[df['predicted_sentiment'] == 'Negative']
+        if len(negative_reviews) > 0:
+            recommendations.append(f"<b>1. Address Critical Issues ({neg_pct:.1f}% negative sentiment)</b><br/>"
+                                 f"   - Analyze {len(negative_reviews):,} negative reviews to identify recurring problems<br/>"
+                                 f"   - Implement fixes in next 2-3 release cycles<br/>"
+                                 f"   - Set up monitoring for sentiment trend changes")
+    
+    if pos_pct >= 50:
+        recommendations.append(f"<b>2. Amplify Positive Experiences ({pos_pct:.1f}% positive sentiment)</b><br/>"
+                             f"   - Feature positive reviews in marketing materials<br/>"
+                             f"   - Encourage satisfied users to share reviews<br/>"
+                             f"   - Document and replicate what's working well")
+    
+    if neu_pct >= 25:
+        recommendations.append(f"<b>3. Convert Neutral Users to Advocates ({neu_pct:.1f}% neutral sentiment)</b><br/>"
+                             f"   - Identify missing features from neutral reviews<br/>"
+                             f"   - Improve onboarding and user guidance<br/>"
+                             f"   - Implement loyalty programs or engagement features")
+    
+    recommendations.append("<b>4. Continuous Monitoring</b><br/>"
+                         "   - Track sentiment trends weekly<br/>"
+                         "   - Monitor rating changes per app version<br/>"
+                         "   - Set up alerts for sudden negative sentiment spikes")
+    
+    for rec in recommendations:
+        story.append(Paragraph(rec, body_style))
+        story.append(Spacer(1, 0.15*inch))
+    
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+    
+    return buffer

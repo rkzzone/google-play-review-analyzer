@@ -26,7 +26,8 @@ from utils import (
     get_topic_labels,
     extract_ngrams,
     aggregate_by_date,
-    filter_by_sentiment
+    filter_by_sentiment,
+    generate_pdf_report
 )
 
 # =============================================================================
@@ -696,11 +697,17 @@ else:
         height=400
     )
     
-    # Download button
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Full Data (CSV)",
-        data=csv,
-        file_name=f"reviews_{st.session_state.selected_app['title']}_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
-    )
+    # Download PDF Report Button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("📄 Download Professional Report (PDF)", use_container_width=True, type="primary"):
+            with st.spinner("Generating professional report..."):
+                pdf_buffer = generate_pdf_report(df, st.session_state.selected_app, st.session_state.topic_labels)
+                
+                st.download_button(
+                    label="⬇️ Download PDF Report",
+                    data=pdf_buffer,
+                    file_name=f"Review_Analysis_Report_{st.session_state.selected_app['title'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
