@@ -210,70 +210,97 @@ if 'search_results' in st.session_state and st.session_state.search_results:
         if st.button("🚀 Start Analysis", width='stretch', type="primary"):
             app_id = selected_app['appId']
             
-            # Scrape reviews
-            if filter_mode == "Review Count":
-                reviews_df = scrape_app_reviews(
-                    app_id=app_id,
-                    lang='id',
-                    country='id',
-                    filter_mode='count',
-                    target_count=review_count
-                )
-            else:
-                reviews_df = scrape_app_reviews(
-                    app_id=app_id,
-                    lang='id',
-                    country='id',
-                    filter_mode='date_range',
-                    start_date=pd.to_datetime(start_date),
-                    end_date=pd.to_datetime(end_date)
-                )
+            # --- 1. PROSES SCRAPING (Gunakan spinner agar user tau sistem bekerja) ---
+            with st.spinner("Sedang mengambil data review dari Google Play..."):
+                if filter_mode == "Review Count":
+                    reviews_df = scrape_app_reviews(
+                        app_id=app_id,
+                        lang='id',
+                        country='id',
+                        filter_mode='count',
+                        target_count=review_count
+                    )
+                else:
+                    reviews_df = scrape_app_reviews(
+                        app_id=app_id,
+                        lang='id',
+                        country='id',
+                        filter_mode='date_range',
+                        start_date=pd.to_datetime(start_date),
+                        end_date=pd.to_datetime(end_date)
+                    )
             
             if not reviews_df.empty:
-                # Single status container for all progress updates
-                status_container = st.empty()
+                # --- SIAPKAN WADAH VISUAL (3 KOTAK) ---
+                # Kita buat 3 placeholder kosong dulu agar posisinya urut ke bawah
+                step1_container = st.empty()
+                step2_container = st.empty()
+                step3_container = st.empty()
                 
-                # Load Indonesian sentiment model
-                status_container.info("📥 Loading Indonesian sentiment model from HuggingFace...")
+                # ==========================================================
+                # TAHAP 1: LOAD MODEL
+                # ==========================================================
+                step1_container.info("ℹ️ 📥 Loading Indonesian sentiment model from HuggingFace...")
+                
                 models_dict = load_sentiment_models(load_mode='id')
                 
                 if models_dict and models_dict.get('id'):
-                    # Update: Model loaded
-                    status_container.success("✅ Model loaded! Analyzing sentiment...")
+                    # Ubah kotak biru jadi hijau (Success)
+                    step1_container.success("✅ Model loaded!")
                     
-                    # Predict sentiment
-                    predictions, probabilities, detected_langs = predict_sentiment_batch(
-                        reviews_df['review_text'].tolist(),
-                        models_dict,
-                        language_mode='id'
-                    )
-                    reviews_df['predicted_sentiment'] = predictions
-                    reviews_df['detected_language'] = detected_langs
-                    gc.collect()
+                    # ==========================================================
+                    # TAHAP 2: SENTIMENT ANALYSIS (Memakan waktu lama)
+                    # ==========================================================
+                    # Tampilkan status biru "Analyzing..."
+                    step2_container.info("🧠 Analyzing sentiment... (Mohon tunggu)")
                     
-                    # Update: Sentiment done, starting topics
-                    status_container.info("📊 Discovering topics...")
+                    # Gunakan st.spinner DI DALAM block ini agar terlihat animasi loading
+                    # Spinner akan muncul di atas/bawah container ini
+                    with st.spinner("Sedang memproses klasifikasi sentimen per kalimat..."):
+                        
+                        predictions, probabilities, detected_langs = predict_sentiment_batch(
+                            reviews_df['review_text'].tolist(),
+                            models_dict,
+                            language_mode='id'
+                        )
+                        reviews_df['predicted_sentiment'] = predictions
+                        reviews_df['detected_language'] = detected_langs
+                        gc.collect()
                     
-                    # Generate topics
-                    topics, topic_model, topic_info = generate_topics(
-                        reviews_df['review_text'].tolist(),
-                        min_topic_size=max(5, len(reviews_df) // 20)
-                    )
+                    # Jika selesai, ubah kotak biru jadi hijau
+                    step2_container.success("✅ Analyzing sentiment complete")
+                    
+                    # ==========================================================
+                    # TAHAP 3: TOPIC MODELING
+                    # ==========================================================
+                    # Tampilkan status biru "Discovering topics..."
+                    step3_container.info("ℹ️ 📊 Discovering topics...")
+                    
+                    with st.spinner("Sedang mengelompokkan topik pembicaraan..."):
+                        topics, topic_model, topic_info = generate_topics(
+                            reviews_df['review_text'].tolist(),
+                            min_topic_size=max(5, len(reviews_df) // 20)
+                        )
                     
                     if topics is not None and topic_model is not None:
                         reviews_df['topic'] = topics
                         st.session_state.topic_model = topic_model
                         st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
-                        status_container.success("✅ Analysis complete!")
+                        
+                        # Ubah kotak biru jadi hijau (Final Success)
+                        step3_container.success("✅ ✅ Analysis complete!")
                     else:
                         reviews_df['topic'] = -1
                         st.session_state.topic_model = None
                         st.session_state.topic_labels = {}
-                        status_container.warning("⚠️ Topic modeling skipped. Sentiment analysis complete!")
+                        step3_container.warning("⚠️ Topic modeling skipped (Data too small).")
                     
                     gc.collect()
                     
-                    # Store in session state
+                    # Beri jeda sedikit agar user bisa melihat semua centang hijau
+                    time.sleep(1.5)
+                    
+                    # Store & Reload
                     st.session_state.reviews_df = reviews_df
                     st.rerun()
             else:
