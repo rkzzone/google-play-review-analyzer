@@ -643,8 +643,11 @@ else:
             ngram_df = extract_ngrams(negative_reviews, n=2, top_k=10)
             
             if not ngram_df.empty:
+                # Reverse order untuk descending dari atas ke bawah
+                ngram_df_reversed = ngram_df.iloc[::-1].copy()
+                
                 fig_ngrams = px.bar(
-                    ngram_df,
+                    ngram_df_reversed,
                     x='frequency',
                     y='ngram',
                     orientation='h',
