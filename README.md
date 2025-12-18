@@ -23,7 +23,7 @@ Dashboard interaktif untuk menganalisis sentimen dan topik dari review aplikasi 
 
 ## 📊 Model Information
 
-- **Model**: [rkkzone/roberta-sentiment-indonesian-playstore](https://huggingface.co/rkkzone/roberta-sentiment-indonesian-playstore)
+- **Model**: [rkkzone/indobert-sentiment-indonesian-playstore](https://huggingface.co/rkkzone/indobert-sentiment-indonesian-playstore)
 - **Language**: Indonesian (Bahasa Indonesia)
 - **Training Dataset**: SMSA (11,000 Indonesian reviews)
 - **Classes**: Positive, Neutral, Negative

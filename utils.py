@@ -342,7 +342,7 @@ def load_sentiment_models(load_mode='id'):
         
         # Load Indonesian model from HuggingFace Hub (silent - status shown in app.py)
         try:
-            id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
+            id_model_name = "rkkzone/indobert-sentiment-indonesian-playstore"
             id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
             id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
             
