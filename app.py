@@ -87,9 +87,8 @@ if 'topic_labels' not in st.session_state:
 # Main Title
 # =============================================================================
 
-st.title("🇮🇩 Dashboard Analisis Review Aplikasi Indonesia")
+st.title("📱 App Review Sentiment & Topic Intelligence Dashboard")
 st.markdown("**Analisis review Google Play Store dengan AI - Sentiment Analysis & Topic Modeling**")
-st.caption("⚡ Optimized untuk aplikasi Indonesia | Powered by IndoBERT")
 
 # =============================================================================
 # Sidebar - Control Panel
@@ -115,58 +114,178 @@ with st.sidebar:
 # Main Content Area
 # =============================================================================
 
-if st.session_state.reviews_df is None:
-    # Welcome screen with App Selection
-    st.markdown("Search for an app to analyze its reviews with AI-powered sentiment analysis")
-    
-    st.subheader("1️⃣ Search for App")
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        # Input tunggal yang menangani segala jenis input
-        query = st.text_input(
-            "Cari Aplikasi",
-            placeholder="Nama aplikasi atau Link Play Store",
-            label_visibility="collapsed",
-            key="app_search_query"
-        )
-    with col2:
-        search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
-    
-    if search_clicked:
-        if query:
-            with st.spinner("Sedang mencari di Play Store..."):
-                # Menggunakan fungsi hybrid yang sudah kita buat
-                results = search_app_hybrid(query)
-                
-                if results:
-                    st.session_state.search_results = results
-                    st.success(f"✅ Ditemukan {len(results)} aplikasi!")
-                else:
-                    st.error("❌ Aplikasi tidak ditemukan. Pastikan ejaan benar atau coba paste Link Play Store-nya.")
-        else:
-            st.warning("⚠️ Masukkan kata kunci pencarian.")
+# Search Section (Always visible)
+st.markdown("Cari aplikasi untuk dianalisis review-nya dengan AI")
 
-    # --- BAGIAN DISPLAY HASIL (Di luar Tabs agar layout lebar penuh) ---
-    if 'search_results' in st.session_state and st.session_state.search_results:
-        st.markdown("---")
-        st.subheader("2️⃣ Pilih Aplikasi dari Hasil Pencarian")
+col1, col2 = st.columns([3, 1])
+with col1:
+    query = st.text_input(
+        "Cari Aplikasi",
+        placeholder="Nama aplikasi atau Link Play Store",
+        label_visibility="collapsed",
+        key="app_search_query"
+    )
+with col2:
+    search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
+
+if search_clicked:
+    if query:
+        with st.spinner("Sedang mencari di Play Store..."):
+            results = search_app_hybrid(query)
+            
+            if results:
+                st.session_state.search_results = results
+                st.success(f"✅ Ditemukan {len(results)} aplikasi!")
+            else:
+                st.error("❌ Aplikasi tidak ditemukan. Pastikan ejaan benar atau coba paste Link Play Store-nya.")
+    else:
+        st.warning("⚠️ Masukkan kata kunci pencarian.")
+
+# Display search results
+if 'search_results' in st.session_state and st.session_state.search_results:
+    results = st.session_state.search_results[:10]
+    
+    # If app selected, show only selected app + config
+    if st.session_state.selected_app:
+        selected_app = st.session_state.selected_app
         
-        # Konfigurasi Grid (5 Kolom, max 10 hasil = 2 baris)
+        # Row 1: Selected app (left) + Scraping config (right)
+        col_app, col_config = st.columns([1, 2])
+        
+        with col_app:
+            with st.container(border=True):
+                c_img, c_txt = st.columns([1, 2])
+                with c_img:
+                    if selected_app.get('icon'):
+                        st.image(selected_app['icon'], use_container_width=True)
+                    else:
+                        st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
+                with c_txt:
+                    st.markdown(f"**{selected_app['title']}**")
+                    score = selected_app.get('score', 0)
+                    st.caption(f"⭐ {score:.2f}" if score else "⭐ N/A")
+                    st.caption(f"👨‍💻 {selected_app.get('developer', 'Unknown')}")
+        
+        with col_config:
+            with st.container(border=True):
+                filter_mode = st.radio(
+                    "Scraping Mode:",
+                    options=["Review Count", "Date Range"],
+                    horizontal=True
+                )
+                
+                if filter_mode == "Review Count":
+                    review_count = st.number_input(
+                        "Number of Reviews",
+                        min_value=50,
+                        max_value=5000,
+                        value=500,
+                        step=50
+                    )
+                    start_date = None
+                    end_date = None
+                else:
+                    date_col1, date_col2 = st.columns(2)
+                    with date_col1:
+                        start_date = st.date_input(
+                            "Start Date",
+                            value=datetime.now() - timedelta(days=90),
+                            max_value=datetime.now()
+                        )
+                    with date_col2:
+                        end_date = st.date_input(
+                            "End Date",
+                            value=datetime.now(),
+                            max_value=datetime.now()
+                        )
+                    review_count = None
+        
+        # Row 2: Start Analysis Button
+        if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
+            app_id = selected_app['appId']
+            
+            # Scrape reviews
+            if filter_mode == "Review Count":
+                reviews_df = scrape_app_reviews(
+                    app_id=app_id,
+                    lang='id',
+                    country='id',
+                    filter_mode='count',
+                    target_count=review_count
+                )
+            else:
+                reviews_df = scrape_app_reviews(
+                    app_id=app_id,
+                    lang='id',
+                    country='id',
+                    filter_mode='date_range',
+                    start_date=pd.to_datetime(start_date),
+                    end_date=pd.to_datetime(end_date)
+                )
+            
+            if not reviews_df.empty:
+                # Single status container for model loading
+                status_container = st.empty()
+                
+                # Load Indonesian sentiment model only
+                status_container.info("📥 Loading Indonesian sentiment model from HuggingFace...")
+                models_dict = load_sentiment_models(load_mode='id')
+                
+                if models_dict and models_dict.get('id'):
+                    status_container.success("✅ Indonesian model loaded!")
+                    
+                    # Predict sentiment
+                    with st.spinner("🤖 Analyzing sentiment..."):
+                        predictions, probabilities, detected_langs = predict_sentiment_batch(
+                            reviews_df['review_text'].tolist(),
+                            models_dict,
+                            language_mode='id'
+                        )
+                        reviews_df['predicted_sentiment'] = predictions
+                        reviews_df['detected_language'] = detected_langs
+                        
+                        # Clear GPU memory after sentiment analysis
+                        gc.collect()
+                    
+                    # Generate topics
+                    with st.spinner("📊 Discovering topics..."):
+                        topics, topic_model, topic_info = generate_topics(
+                            reviews_df['review_text'].tolist(),
+                            min_topic_size=max(5, len(reviews_df) // 20)
+                        )
+                        
+                        if topics is not None and topic_model is not None:
+                            reviews_df['topic'] = topics
+                            st.session_state.topic_model = topic_model
+                            st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
+                            st.success("✅ Topic modeling complete!")
+                        else:
+                            st.warning("⚠️ Topic modeling skipped or failed. Continuing with sentiment analysis only...")
+                            reviews_df['topic'] = -1
+                            st.session_state.topic_model = None
+                            st.session_state.topic_labels = {}
+                        
+                        # Clear memory after topic modeling
+                        gc.collect()
+                    
+                    # Store in session state
+                    st.session_state.reviews_df = reviews_df
+                    st.success("✅ Analysis complete!")
+                    st.rerun()
+            else:
+                st.error("❌ Failed to fetch reviews. Please try again.")
+    
+    else:
+        # Show all search results (app not yet selected)
         apps_per_row = 5
-        results = st.session_state.search_results[:10]  # Limit to 10 results
         
-        # Loop Dinamis: Menangani berapapun jumlah baris secara otomatis
         for i in range(0, len(results), apps_per_row):
-            # Mengambil potongan data (chunk) untuk baris ini
             row_apps = results[i:i+apps_per_row]
             cols = st.columns(apps_per_row)
             
             for idx, app in enumerate(row_apps):
                 with cols[idx]:
-                    # Container dengan border (Kartu)
                     with st.container(border=True):
-                        # Layout Icon di kiri, Teks di kanan
                         c_img, c_txt = st.columns([1, 3])
                         
                         with c_img:
@@ -176,155 +295,25 @@ if st.session_state.reviews_df is None:
                                 st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
                         
                         with c_txt:
-                            # Title dengan truncate untuk 5 kolom - max 15 karakter agar 1 baris
                             title = app['title']
                             max_title_len = 15
                             display_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
                             st.markdown(f"**{display_title}**", help=title)
                             
-                            # Info Developer & Rating - single line dengan truncate lebih ketat
                             score = app.get('score', 0)
                             rating_display = f"{score:.2f}" if score else "N/A"
                             dev = app.get('developer', 'Unknown')
-                            # Max 8 karakter untuk developer karena space lebih sempit
                             max_dev_len = 8
                             display_dev = dev[:max_dev_len] + "..." if len(dev) > max_dev_len else dev
                             st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}")
 
-                        # Tombol Select di bawah (full width)
                         unique_key = f"btn_{app['appId']}_{i}_{idx}"
-                        if st.button("Analisis", key=unique_key, use_container_width=True, type="secondary"):
+                        if st.button("Pilih", key=unique_key, use_container_width=True, type="secondary"):
                             st.session_state.selected_app = app
-                            st.toast(f"Memilih aplikasi: {app['title']}")
                             st.rerun()
-    
-    # Scraping Configuration (after app selected)
-    if st.session_state.selected_app:
-        st.markdown("---")
-        st.subheader("3️⃣ Configure Analysis")
-        
-        selected_app = st.session_state.selected_app
-        st.info(f"**Selected App:** {selected_app['title']} by {selected_app.get('developer', 'Unknown')}")
-        
-        # Filter mode selection
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            filter_mode = st.radio(
-                "**Select Scraping Mode:**",
-                options=["Review Count Limit", "Date Range"],
-                help="Choose how to filter reviews"
-            )
-        
-        with col2:
-            # Conditional inputs based on mode
-            if filter_mode == "Review Count Limit":
-                review_count = st.number_input(
-                    "Number of Reviews",
-                    min_value=50,
-                    max_value=5000,
-                    value=500,
-                    step=50,
-                    help="Number of most recent reviews to fetch"
-                )
-                start_date = None
-                end_date = None
-            else:
-                st.markdown("**Date Range:**")
-                # Date inputs side by side
-                date_col1, date_col2 = st.columns(2)
-                with date_col1:
-                    start_date = st.date_input(
-                        "Start Date",
-                        value=datetime.now() - timedelta(days=90),
-                        max_value=datetime.now()
-                    )
-                with date_col2:
-                    end_date = st.date_input(
-                        "End Date",
-                        value=datetime.now(),
-                        max_value=datetime.now()
-                    )
-                review_count = None
-        
-        st.markdown("---")
-        
-        
-        st.markdown("---")
-        
-        # Analyze button
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
-                app_id = selected_app['appId']
-                
-                # Always scrape Indonesian reviews
-                if filter_mode == "Review Count Limit":
-                    reviews_df = scrape_app_reviews(
-                        app_id=app_id,
-                        lang='id',
-                        country='id',
-                        filter_mode='count',
-                        target_count=review_count
-                    )
-                else:
-                    reviews_df = scrape_app_reviews(
-                        app_id=app_id,
-                        lang='id',
-                        country='id',
-                        filter_mode='date_range',
-                        start_date=pd.to_datetime(start_date),
-                        end_date=pd.to_datetime(end_date)
-                    )
-                
-                if not reviews_df.empty:
-                    # Load Indonesian sentiment model only
-                    models_dict = load_sentiment_models(load_mode='id')
-                    
-                    if models_dict and models_dict.get('id'):
-                        # Predict sentiment
-                        with st.spinner("🤖 Analyzing sentiment with Indonesian model..."):
-                            predictions, probabilities, detected_langs = predict_sentiment_batch(
-                                reviews_df['review_text'].tolist(),
-                                models_dict,
-                                language_mode='id'
-                            )
-                            reviews_df['predicted_sentiment'] = predictions
-                            reviews_df['detected_language'] = detected_langs
-                            
-                            # Clear GPU memory after sentiment analysis
-                            gc.collect()
-                        
-                        # Generate topics
-                        with st.spinner("📊 Discovering topics..."):
-                            topics, topic_model, topic_info = generate_topics(
-                                reviews_df['review_text'].tolist(),
-                                min_topic_size=max(5, len(reviews_df) // 20)  # Adaptive min_topic_size
-                            )
-                            
-                            if topics is not None and topic_model is not None:
-                                reviews_df['topic'] = topics
-                                st.session_state.topic_model = topic_model
-                                st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
-                                st.success("✅ Topic modeling complete!")
-                            else:
-                                st.warning("⚠️ Topic modeling skipped or failed. Continuing with sentiment analysis only...")
-                                reviews_df['topic'] = -1  # Assign all to "other" topic
-                                st.session_state.topic_model = None
-                                st.session_state.topic_labels = {}
-                            
-                            # Clear memory after topic modeling
-                            gc.collect()
-                        
-                        # Store in session state
-                        st.session_state.reviews_df = reviews_df
-                        st.success("✅ Analysis complete!")
-                        st.rerun()
-                else:
-                    st.error("❌ Failed to fetch reviews. Please try again.")
-    
-    # Feature highlights (only show if no app selected)
-    if not st.session_state.selected_app:
+
+# Show analysis results below if available
+if st.session_state.reviews_df is not None:
         st.markdown("---")
         st.markdown("## ✨ Features")
         col1, col2, col3 = st.columns(3)
