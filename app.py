@@ -572,12 +572,28 @@ else:
     with col_left:
         st.markdown("#### 📱 Version Analysis")
         
-        # Version sentiment analysis
-        version_sentiment = df.groupby(['app_version', 'predicted_sentiment']).size().unstack(fill_value=0)
+        # Toggle untuk filter unknown versions
+        exclude_unknown = st.checkbox(
+            "Exclude unknown versions",
+            value=True,
+            help="Filter out 'Unknown', 'Varies with device', and similar generic version strings"
+        )
         
-        if not version_sentiment.empty:
+        # Version sentiment analysis
+        df_version = df.copy()
+        
+        # Filter unknown versions jika checkbox aktif
+        if exclude_unknown:
+            unknown_patterns = ['unknown', 'varies', 'variable', 'n/a', 'null', 'none', '0', '']
+            df_version = df_version[
+                ~df_version['app_version'].str.lower().str.contains('|'.join(unknown_patterns), na=False)
+            ]
+        
+        if not df_version.empty:
+            version_sentiment = df_version.groupby(['app_version', 'predicted_sentiment']).size().unstack(fill_value=0)
+            
             # Get top 10 versions by review count
-            top_versions = df['app_version'].value_counts().head(10).index
+            top_versions = df_version['app_version'].value_counts().head(10).index
             version_sentiment_top = version_sentiment.loc[version_sentiment.index.isin(top_versions)]
             
             fig_version = go.Figure()
@@ -596,13 +612,13 @@ else:
                 barmode='stack',
                 xaxis_title="App Version",
                 yaxis_title="Number of Reviews",
-                height=350,
-                margin=dict(l=20, r=20, t=20, b=20)
+                height=300,
+                margin=dict(l=20, r=20, t=10, b=20)
             )
             
             st.plotly_chart(fig_version, use_container_width=True)
         else:
-            st.info("Version data not available")
+            st.info("No version data available after filtering")
     
     with col_right:
         st.markdown("#### 🔍 Negative Review Keywords")
