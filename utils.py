@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import torch
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from google_play_scraper import app, search, Sort, reviews
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
@@ -18,7 +18,7 @@ import re
 
 # Base path configuration - use script directory
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_PATH, 'saved_model')
+MODEL_PATH = os.path.join(BASE_PATH, 'saved_model_id')  # Indonesian model
 
 
 # =============================================================================
@@ -338,24 +338,24 @@ def load_sentiment_model():
     try:
         # Try local path first (for local development)
         if os.path.exists(MODEL_PATH):
-            st.info("Loading model from local path...")
-            tokenizer = RobertaTokenizer.from_pretrained(MODEL_PATH)
-            model = RobertaForSequenceClassification.from_pretrained(MODEL_PATH)
+            st.info("Loading Indonesian sentiment model from local path...")
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+            model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
         else:
             # Fallback: Load from Hugging Face Hub (for Streamlit Cloud)
-            st.info("Local model not found. Loading from Hugging Face Hub...")
-            model_name = "rkkzone/roberta-sentiment-playstore"  # Your fine-tuned model on HF
+            st.info("Local model not found. Loading Indonesian model from Hugging Face Hub...")
+            model_name = "rkkzone/roberta-sentiment-indonesian-playstore"  # Indonesian fine-tuned model on HF
             
             try:
-                tokenizer = RobertaTokenizer.from_pretrained(model_name)
-                model = RobertaForSequenceClassification.from_pretrained(model_name)
-                st.success("✅ Fine-tuned model loaded from Hugging Face Hub!")
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                model = AutoModelForSequenceClassification.from_pretrained(model_name)
+                st.success("✅ Indonesian sentiment model loaded from Hugging Face Hub!")
             except Exception as hf_error:
-                # If HF model not found, use base model as fallback
-                st.warning(f"Hugging Face model not found. Using base roberta-base model instead.")
+                # If HF model not found, use IndoBERT base model as fallback
+                st.warning(f"Hugging Face model not found. Using base IndoBERT model instead.")
                 st.warning("⚠️ This model is NOT fine-tuned for sentiment analysis!")
-                tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-                model = RobertaForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
+                tokenizer = AutoTokenizer.from_pretrained("indobenchmark/indobert-base-p1")
+                model = AutoModelForSequenceClassification.from_pretrained("indobenchmark/indobert-base-p1", num_labels=3)
         
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device)
@@ -472,16 +472,28 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         # Preprocess texts
         cleaned_texts = preprocess_for_topics(texts)
         
-        # Custom vectorizer to remove common words
+        # Indonesian stopwords for better topic modeling
+        indonesian_stopwords = [
+            'yang', 'dan', 'di', 'dari', 'ini', 'itu', 'untuk', 'ke', 'pada', 'dengan',
+            'tidak', 'ada', 'adalah', 'akan', 'atau', 'juga', 'saya', 'kamu', 'nya',
+            'lah', 'kah', 'pun', 'sudah', 'belum', 'bisa', 'bisa', 'bukan', 'hanya',
+            'lebih', 'sangat', 'jadi', 'jika', 'kalau', 'tapi', 'tetapi', 'seperti',
+            'saat', 'waktu', 'semua', 'setiap', 'karena', 'maka', 'lagi', 'masih',
+            'oleh', 'tentang', 'antara', 'sampai', 'hingga', 'bahwa', 'sedang', 'aja',
+            'sih', 'deh', 'dong', 'kok', 'yah', 'apps', 'app', 'aplikasi', 'bang',
+            'kak', 'mas', 'gan', 'bro', 'min', 'admin'
+        ]
+        
+        # Custom vectorizer with Indonesian stopwords
         vectorizer_model = CountVectorizer(
-            stop_words='english',
+            stop_words=indonesian_stopwords,
             min_df=2,
             ngram_range=(1, 2)
         )
         
-        # Initialize BERTopic with lightweight model
+        # Initialize BERTopic with multilingual embedding model for Indonesian support
         topic_model = BERTopic(
-            embedding_model='all-MiniLM-L6-v2',
+            embedding_model='paraphrase-multilingual-MiniLM-L12-v2',  # Supports Indonesian
             vectorizer_model=vectorizer_model,
             nr_topics=n_topics,
             min_topic_size=min_topic_size,
@@ -648,11 +660,60 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from datetime import datetime
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PYPDF2_AVAILABLE = False
+
+
+# Template configuration (koordinat dalam points, 72 points = 1 inch)
+TEMPLATE_CONFIG = {
+    "page_2_executive": {
+        "chart_position": (50, 200),  # (x, y) for donut chart
+        "chart_size": (300, 250),     # (width, height)
+        "timeline_position": (400, 200),
+        "timeline_size": (350, 250)
+    },
+    "page_3_sentiment": {
+        "bar_chart_position": (50, 150),
+        "bar_chart_size": (400, 300)
+    },
+    "page_4_topics": {
+        "topic_chart_position": (50, 120),
+        "topic_chart_size": (500, 350)
+    }
+}
+
+
+def create_plotly_chart_image(fig, width=400, height=300):
+    """
+    Convert Plotly figure to image buffer for PDF embedding.
+    
+    Args:
+        fig: Plotly figure object
+        width: Image width in pixels
+        height: Image height in pixels
+        
+    Returns:
+        BytesIO: Image buffer
+    """
+    try:
+        # Export plotly figure as static image
+        img_bytes = fig.to_image(format="png", width=width, height=height, scale=2)
+        return BytesIO(img_bytes)
+    except Exception as e:
+        print(f"Warning: Could not generate chart image: {e}")
+        return None
 
 
 def generate_pdf_report(df, app_info, topic_labels):
     """
-    Generate professional consultant-style PDF report in 16:9 format.
+    Generate professional consultant-style PDF report in 16:9 format with visualizations.
+    Supports custom PDF templates or generates default layout.
     
     Args:
         df (pd.DataFrame): Reviews DataFrame with analysis results
@@ -661,6 +722,29 @@ def generate_pdf_report(df, app_info, topic_labels):
         
     Returns:
         BytesIO: PDF file buffer
+    """
+    
+    # Check if custom template exists
+    template_path = os.path.join(BASE_PATH, 'templates', 'report_template.pdf')
+    use_template = os.path.exists(template_path) and PYPDF2_AVAILABLE
+    
+    if use_template:
+        return generate_pdf_with_template(df, app_info, topic_labels, template_path)
+    else:
+        return generate_pdf_with_charts(df, app_info, topic_labels)
+
+
+def generate_pdf_with_charts(df, app_info, topic_labels):
+    """
+    Generate PDF report with embedded Plotly charts (no template).
+    
+    Args:
+        df (pd.DataFrame): Reviews DataFrame
+        app_info (dict): App information
+        topic_labels (dict): Topic labels
+        
+    Returns:
+        BytesIO: PDF buffer
     """
     buffer = BytesIO()
     

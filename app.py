@@ -252,9 +252,9 @@ if st.session_state.reviews_df is None:
             if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
                 app_id = selected_app['appId']
                 
-                # Default to English language and US country
-                lang = 'en'
-                country = 'us'
+                # Default to Indonesian language and ID country for Indonesian market
+                lang = 'id'
+                country = 'id'
                 
                 # Scrape reviews
                 if filter_mode == "Review Count Limit":

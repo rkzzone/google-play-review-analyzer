@@ -1,24 +1,33 @@
 # 📱 App Review Sentiment & Topic Intelligence Dashboard
 
-Aplikasi dashboard interaktif untuk menganalisis sentimen dan topik dari review aplikasi Google Play Store menggunakan RoBERTa dan BERTopic.
+Dashboard interaktif untuk menganalisis sentimen dan topik dari review aplikasi Google Play Store Indonesia menggunakan **IndoBERT** dan **BERTopic**.
 
 ## 🌟 Fitur
 
-- **Real-time Scraping**: Ambil review langsung dari Google Play Store
-- **Sentiment Analysis**: Klasifikasi sentimen menggunakan model RoBERTa fine-tuned
-- **Topic Modeling**: Ekstraksi topik otomatis dengan BERTopic
-- **Interactive Dashboard**: Visualisasi data yang komprehensif
-- **Export Results**: Download hasil analisis dalam format CSV
+- **Real-time Scraping**: Ambil review bahasa Indonesia langsung dari Google Play Store
+- **Sentiment Analysis**: Klasifikasi sentimen menggunakan model IndoBERT fine-tuned untuk bahasa Indonesia
+- **Topic Modeling**: Ekstraksi topik otomatis dengan BERTopic (multilingual support)
+- **Interactive Dashboard**: Visualisasi data yang komprehensif dan adaptif
+- **Professional PDF Reports**: Export hasil analisis dalam format PDF konsultan 16:9
 
 ## 🛠️ Teknologi
 
 - **Frontend**: Streamlit
 - **ML Models**: 
-  - RoBERTa (Sentiment Analysis)
-  - BERTopic (Topic Modeling)
+  - **IndoBERT** (Sentiment Analysis - Indonesian)
+  - **BERTopic** with Multilingual Embeddings (Topic Modeling)
 - **Data Processing**: Pandas, NumPy
-- **Visualization**: Plotly
+- **Visualization**: Plotly, Kaleido
+- **PDF Generation**: ReportLab, PyPDF2
 - **Scraping**: google-play-scraper
+
+## 📊 Model Information
+
+- **Model**: [rkkzone/roberta-sentiment-indonesian-playstore](https://huggingface.co/rkkzone/roberta-sentiment-indonesian-playstore)
+- **Language**: Indonesian (Bahasa Indonesia)
+- **Training Dataset**: SMSA (11,000 Indonesian reviews)
+- **Classes**: Positive, Neutral, Negative
+- **Base Model**: IndoBERT (`indobenchmark/indobert-base-p1`)
 
 ## 📋 Prerequisites
 
