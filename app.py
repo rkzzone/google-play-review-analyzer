@@ -422,8 +422,25 @@ else:
         st.plotly_chart(fig_donut, use_container_width=True)
     
     with col_right:
-        # Timeline trend with dual axis
-        df_timeline = aggregate_by_date(df, freq='D')
+        # Timeline trend with dual axis - adaptive frequency
+        # Calculate date range to determine optimal aggregation frequency
+        date_range = (df['date'].max() - df['date'].min()).days
+        
+        # Adaptive frequency selection:
+        # - Daily: <= 30 days (1 month)
+        # - Weekly: 31-180 days (~1-6 months)
+        # - Monthly: > 180 days (> 6 months)
+        if date_range <= 30:
+            freq = 'D'
+            freq_label = 'Daily'
+        elif date_range <= 180:
+            freq = 'W'
+            freq_label = 'Weekly'
+        else:
+            freq = 'M'
+            freq_label = 'Monthly'
+        
+        df_timeline = aggregate_by_date(df, freq=freq)
         
         if not df_timeline.empty:
             fig_timeline = make_subplots(specs=[[{"secondary_y": True}]])
@@ -457,7 +474,7 @@ else:
             fig_timeline.update_yaxes(title_text="Star Rating (1-5)", secondary_y=True)
             
             fig_timeline.update_layout(
-                title="Sentiment & Rating Trend Over Time",
+                title=f"Sentiment & Rating Trend Over Time ({freq_label})",
                 hovermode='x unified',
                 height=350,
                 margin=dict(l=20, r=20, t=40, b=20)
