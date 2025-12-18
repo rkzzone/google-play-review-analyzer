@@ -409,14 +409,15 @@ else:
             hole=0.5,
             marker=dict(colors=['#2ecc71', '#95a5a6', '#e74c3c']),
             textinfo='label+percent',
-            textposition='outside'
+            textposition='auto',  # Changed from 'outside' to 'auto' for better positioning
+            pull=[0.05, 0, 0]  # Slightly pull out Positive slice for better visibility
         )])
         
         fig_donut.update_layout(
             title="Sentiment Distribution",
             height=350,
             showlegend=True,
-            margin=dict(l=20, r=20, t=40, b=20)
+            margin=dict(l=50, r=50, t=40, b=40)  # Increased margins to prevent label cutoff
         )
         
         st.plotly_chart(fig_donut, use_container_width=True)
