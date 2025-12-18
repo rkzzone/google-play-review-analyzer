@@ -552,55 +552,76 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         valid_indices = []
         
         for idx, text in enumerate(texts):
+            if not isinstance(text, str):
+                continue
+                
             # Convert to lowercase
             cleaned = text.lower()
-            # Remove special characters but keep spaces
-            cleaned = re.sub(r'[^a-z\s]', '', cleaned)
+            # Remove URLs
+            cleaned = re.sub(r'http\S+|www\S+', '', cleaned)
+            # Remove numbers (but keep text)
+            cleaned = re.sub(r'\d+', '', cleaned)
+            # Remove excessive punctuation but keep letters (including Indonesian)
+            cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
             # Remove extra spaces
             cleaned = ' '.join(cleaned.split())
             
-            # Only keep if text is meaningful after cleaning
-            if cleaned and len(cleaned.strip()) > 5:
+            # Only keep if text is meaningful after cleaning (at least 3 words)
+            if cleaned and len(cleaned.split()) >= 3:
                 cleaned_texts.append(cleaned)
                 valid_indices.append(idx)
         
         if len(cleaned_texts) < min_topic_size:
-            st.warning(f"⚠️ Not enough valid texts after preprocessing (need at least {min_topic_size}, got {len(cleaned_texts)})")
+            st.warning(f"⚠️ Not enough valid texts after preprocessing (need at least {min_topic_size}, got {len(cleaned_texts)} from {len(texts)} reviews)")
             return None, None, None
         
         # Indonesian stopwords for better topic modeling
         indonesian_stopwords = [
             'yang', 'dan', 'di', 'dari', 'ini', 'itu', 'untuk', 'ke', 'pada', 'dengan',
             'tidak', 'ada', 'adalah', 'akan', 'atau', 'juga', 'saya', 'kamu', 'nya',
-            'lah', 'kah', 'pun', 'sudah', 'belum', 'bisa', 'bisa', 'bukan', 'hanya',
+            'lah', 'kah', 'pun', 'sudah', 'belum', 'bisa', 'bukan', 'hanya',
             'lebih', 'sangat', 'jadi', 'jika', 'kalau', 'tapi', 'tetapi', 'seperti',
             'saat', 'waktu', 'semua', 'setiap', 'karena', 'maka', 'lagi', 'masih',
             'oleh', 'tentang', 'antara', 'sampai', 'hingga', 'bahwa', 'sedang', 'aja',
             'sih', 'deh', 'dong', 'kok', 'yah', 'apps', 'app', 'aplikasi', 'bang',
-            'kak', 'mas', 'gan', 'bro', 'min', 'admin'
+            'kak', 'mas', 'gan', 'bro', 'min', 'admin', 'the', 'is', 'and', 'to', 'a'
         ]
         
         # Custom vectorizer with Indonesian stopwords
         vectorizer_model = CountVectorizer(
             stop_words=indonesian_stopwords,
             min_df=2,
+            max_df=0.95,  # Ignore words that appear in >95% of documents
             ngram_range=(1, 2),
             max_features=1000
         )
         
-        # Initialize BERTopic with multilingual embedding model for Indonesian support
-        st.info("🔍 Initializing topic model with multilingual embeddings...")
-        topic_model = BERTopic(
-            embedding_model='paraphrase-multilingual-MiniLM-L12-v2',  # Supports Indonesian
-            vectorizer_model=vectorizer_model,
-            nr_topics=n_topics,
-            min_topic_size=min_topic_size,
-            calculate_probabilities=False,
-            verbose=False
-        )
+        # Initialize BERTopic with multilingual embedding model
+        st.info(f"🔍 Initializing topic model for {len(cleaned_texts)} reviews...")
+        
+        # Try multilingual model first, fallback to smaller if fails
+        try:
+            topic_model = BERTopic(
+                embedding_model='paraphrase-multilingual-MiniLM-L12-v2',
+                vectorizer_model=vectorizer_model,
+                nr_topics=n_topics,
+                min_topic_size=min_topic_size,
+                calculate_probabilities=False,
+                verbose=False
+            )
+        except Exception as embed_error:
+            st.warning(f"⚠️ Multilingual model failed, using lightweight fallback: {embed_error}")
+            topic_model = BERTopic(
+                embedding_model='all-MiniLM-L6-v2',  # Smaller, faster fallback
+                vectorizer_model=vectorizer_model,
+                nr_topics=n_topics,
+                min_topic_size=min_topic_size,
+                calculate_probabilities=False,
+                verbose=False
+            )
         
         # Fit model
-        st.info(f"📊 Fitting topic model on {len(cleaned_texts)} reviews...")
+        st.info(f"📊 Analyzing topics...")
         fitted_topics, _ = topic_model.fit_transform(cleaned_texts)
         
         # Get topic info
@@ -609,16 +630,15 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         # Check if topics were found
         unique_topics = len([t for t in set(fitted_topics) if t != -1])
         if unique_topics == 0:
-            st.warning("⚠️ No topics could be extracted. Reviews might be too similar or too short.")
+            st.warning("⚠️ No distinct topics found. Reviews may be too similar.")
             return None, None, None
         
         # Map fitted topics back to original indices
-        # All texts get -1 (outlier) by default, valid ones get their actual topic
         all_topics = [-1] * len(texts)
         for i, valid_idx in enumerate(valid_indices):
             all_topics[valid_idx] = fitted_topics[i]
         
-        st.success(f"✅ Found {unique_topics} topics!")
+        st.success(f"✅ Found {unique_topics} topics from {len(cleaned_texts)} reviews!")
         return all_topics, topic_model, topic_info
         
     except Exception as e:
