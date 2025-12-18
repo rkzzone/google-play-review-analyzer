@@ -353,7 +353,7 @@ else:
         avg_rating = df['rating'].mean()
         st.metric(
             label="Avg Rating",
-            value=f"{avg_rating:.2f} 🌟"
+            value=f"{avg_rating:.2f} ⭐"
         )
     
     with col3:
