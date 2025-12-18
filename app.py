@@ -126,7 +126,7 @@ with col1:
         key="app_search_query"
     )
 with col2:
-    search_clicked = st.button("🔍 Cari", use_container_width=True, type="primary")
+    search_clicked = st.button("🔍 Cari", width='stretch', type="primary")
 
 if search_clicked:
     if query:
@@ -157,7 +157,7 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                 c_img, c_txt = st.columns([1, 2])
                 with c_img:
                     if selected_app.get('icon'):
-                        st.image(selected_app['icon'], use_container_width=True)
+                        st.image(selected_app['icon'], width='stretch')
                     else:
                         st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
                 with c_txt:
@@ -201,7 +201,7 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                     review_count = None
         
         # Row 2: Start Analysis Button
-        if st.button("🚀 Start Analysis", use_container_width=True, type="primary"):
+        if st.button("🚀 Start Analysis", width='stretch', type="primary"):
             app_id = selected_app['appId']
             
             # Scrape reviews
@@ -290,7 +290,7 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                         
                         with c_img:
                             if app.get('icon'):
-                                st.image(app['icon'], use_container_width=True)
+                                st.image(app['icon'], width='stretch')
                             else:
                                 st.markdown("<div style='text-align: center; font-size: 40px;'>📱</div>", unsafe_allow_html=True)
                         
@@ -308,7 +308,7 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                             st.caption(f"⭐ {rating_display} | 👨‍💻 {display_dev}")
 
                         unique_key = f"btn_{app['appId']}_{i}_{idx}"
-                        if st.button("Pilih", key=unique_key, use_container_width=True, type="secondary"):
+                        if st.button("Pilih", key=unique_key, width='stretch', type="secondary"):
                             st.session_state.selected_app = app
                             st.rerun()
 
@@ -411,7 +411,7 @@ if st.session_state.reviews_df is not None:
             margin=dict(l=50, r=50, t=40, b=40)  # Increased margins to prevent label cutoff
         )
         
-        st.plotly_chart(fig_donut, use_container_width=True)
+        st.plotly_chart(fig_donut, use_container='stretch')
     
     with col_right:
         # Timeline trend with dual axis - adaptive frequency
@@ -472,7 +472,7 @@ if st.session_state.reviews_df is not None:
                 margin=dict(l=20, r=20, t=40, b=20)
             )
             
-            st.plotly_chart(fig_timeline, use_container_width=True)
+            st.plotly_chart(fig_timeline, use_container='stretch')
         else:
             st.info("Not enough data for timeline visualization")
     
@@ -522,7 +522,7 @@ if st.session_state.reviews_df is not None:
                 margin=dict(l=20, r=20, t=40, b=20)
             )
             
-            st.plotly_chart(fig_topics, use_container_width=True)
+            st.plotly_chart(fig_topics, use_container='stretch')
         
         with col_right:
             st.markdown("#### 💬 Representative Reviews")
@@ -627,7 +627,7 @@ if st.session_state.reviews_df is not None:
                     margin=dict(l=20, r=20, t=10, b=20)
                 )
                 
-                st.plotly_chart(fig_version, use_container_width=True)
+                st.plotly_chart(fig_version, use_container='stretch')
             else:
                 st.info("No version data available")
         else:
@@ -663,7 +663,7 @@ if st.session_state.reviews_df is not None:
                     margin=dict(l=20, r=20, t=20, b=20)
                 )
                 
-                st.plotly_chart(fig_ngrams, use_container_width=True)
+                st.plotly_chart(fig_ngrams, use_container='stretch')
             else:
                 st.info("Not enough data for n-gram analysis")
         else:
@@ -692,14 +692,14 @@ if st.session_state.reviews_df is not None:
     
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width='stretch',
         height=400
     )
     
     # Download PDF Report Button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📄 Download Professional Report (PDF)", use_container_width=True, type="primary"):
+        if st.button("📄 Download Professional Report (PDF)", width='stretch', type="primary"):
             with st.spinner("Generating professional report..."):
                 pdf_buffer = generate_pdf_report(df, st.session_state.selected_app, st.session_state.topic_labels)
                 
@@ -708,5 +708,5 @@ if st.session_state.reviews_df is not None:
                     data=pdf_buffer,
                     file_name=f"Review_Analysis_Report_{st.session_state.selected_app['title'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf",
-                    use_container_width=True
+                    width='stretch'
                 )
