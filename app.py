@@ -129,6 +129,12 @@ with col2:
     search_clicked = st.button("🔍 Cari", width='stretch', type="primary")
 
 if search_clicked:
+    # Clear previous analysis and selection when searching new app
+    st.session_state.reviews_df = None
+    st.session_state.selected_app = None
+    st.session_state.topic_model = None
+    st.session_state.topic_labels = {}
+    
     if query:
         with st.spinner("Sedang mencari di Play Store..."):
             results = search_app_hybrid(query)
