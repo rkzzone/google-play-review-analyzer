@@ -340,19 +340,15 @@ def load_sentiment_models(load_mode='id'):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         models_dict = {'device': device}
         
-        st.info("📥 Loading Indonesian sentiment model from HuggingFace...")
-        
-        # Load Indonesian model from HuggingFace Hub
+        # Load Indonesian model from HuggingFace Hub (silent - status shown in app.py)
         try:
             id_model_name = "rkkzone/roberta-sentiment-indonesian-playstore"
-            st.info(f"Downloading: {id_model_name}")
             id_tokenizer = AutoTokenizer.from_pretrained(id_model_name)
             id_model = AutoModelForSequenceClassification.from_pretrained(id_model_name)
             
             id_model = id_model.to(device)
             id_model.eval()
             models_dict['id'] = {'model': id_model, 'tokenizer': id_tokenizer}
-            st.success("✅ Indonesian model loaded!")
         except Exception as e:
             st.error(f"❌ Failed to load Indonesian model: {e}")
             return None
