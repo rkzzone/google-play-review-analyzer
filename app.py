@@ -501,19 +501,24 @@ else:
         col_left, col_right = st.columns([6, 4])
         
         with col_left:
-            # Topic frequency bar chart
+            # Topic frequency bar chart (sorted descending, top to bottom)
             topic_counts = df['topic'].value_counts().head(10)
             topic_labels_list = [st.session_state.topic_labels.get(t, f"Topic {t}") for t in topic_counts.index]
             
+            # Reverse order untuk descending dari atas ke bawah
+            topic_labels_list_reversed = topic_labels_list[::-1]
+            topic_counts_reversed = topic_counts.values[::-1]
+            topic_index_reversed = topic_counts.index[::-1]
+            
             fig_topics = go.Figure(data=[
                 go.Bar(
-                    y=topic_labels_list,
-                    x=topic_counts.values,
+                    y=topic_labels_list_reversed,
+                    x=topic_counts_reversed,
                     orientation='h',
                     marker=dict(
                         color=['#1f77b4' if selected_topic_display == "All Topics" or 
-                               str(topic_counts.index[i]) in selected_topic_display 
-                               else '#95a5a6' for i in range(len(topic_counts))]
+                               str(topic_index_reversed[i]) in selected_topic_display 
+                               else '#95a5a6' for i in range(len(topic_counts_reversed))]
                     )
                 )
             ])
