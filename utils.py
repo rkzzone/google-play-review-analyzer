@@ -344,11 +344,12 @@ def load_sentiment_model():
         else:
             # Fallback: Load from Hugging Face Hub (for Streamlit Cloud)
             st.info("Local model not found. Loading from Hugging Face Hub...")
-            model_name = "rkzzone/roberta-sentiment-playstore"  # Replace with your HF model repo
+            model_name = "rkkzone/roberta-sentiment-playstore"  # Your fine-tuned model on HF
             
             try:
                 tokenizer = RobertaTokenizer.from_pretrained(model_name)
                 model = RobertaForSequenceClassification.from_pretrained(model_name)
+                st.success("✅ Fine-tuned model loaded from Hugging Face Hub!")
             except Exception as hf_error:
                 # If HF model not found, use base model as fallback
                 st.warning(f"Hugging Face model not found. Using base roberta-base model instead.")
