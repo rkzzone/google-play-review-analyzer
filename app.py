@@ -409,8 +409,8 @@ else:
             hole=0.5,
             marker=dict(colors=['#2ecc71', '#95a5a6', '#e74c3c']),
             textinfo='label+percent',
-            textposition='auto',  # Changed from 'outside' to 'auto' for better positioning
-            pull=[0.05, 0, 0]  # Slightly pull out Positive slice for better visibility
+            textposition='outside',
+            pull=[0.05, 0, 0]
         )])
         
         fig_donut.update_layout(
