@@ -354,7 +354,8 @@ else:
         st.metric(
             label="Avg Rating",
             value=f"{avg_rating:.2f} ⭐",
-            delta=f"{avg_rating - 3:.2f}" if avg_rating >= 3 else f"{avg_rating - 3:.2f}"
+            delta=f"{avg_rating - 3:.2f} vs baseline (3.0)",
+            help="Perbandingan dengan rating baseline 3.0 (rating tengah dari skala 1-5)"
         )
     
     with col3:
@@ -373,7 +374,8 @@ else:
         st.metric(
             label="Net Sentiment",
             value=net_sentiment,
-            delta=f"{pos_pct:.1f}% Positive"
+            delta=f"{pos_pct:.1f}% Positive",
+            help="Sentiment mayoritas berdasarkan distribusi Positive/Neutral/Negative"
         )
     
     with col4:
