@@ -252,17 +252,13 @@ if st.session_state.reviews_df is None:
         st.markdown("**Language & Model Selection:**")
         language_option = st.selectbox(
             "Select Language/Model",
-            options=["Auto-Detect (🇮🇩 Indonesian + 🇬🇧 English)", "Indonesian Only (🇮🇩)", "English Only (🇬🇧)"],
+            options=["Indonesian (🇮🇩)", "English (🇬🇧)"],
             index=0,
-            help="Choose how to analyze reviews:\n- Auto: Automatically detect language per review\n- Indonesian: Use Indonesian model for all reviews\n- English: Use English model for all reviews"
+            help="Choose language model:\n- Indonesian: Optimized for Indonesian reviews (saves memory)\n- English: For English reviews only"
         )
         
         # Map UI selection to internal codes
-        if "Auto" in language_option:
-            language_mode = 'auto'
-            lang = 'id'  # Default scraping to Indonesian
-            country = 'id'
-        elif "Indonesian" in language_option:
+        if "Indonesian" in language_option:
             language_mode = 'id'
             lang = 'id'
             country = 'id'
@@ -303,8 +299,8 @@ if st.session_state.reviews_df is None:
                     models_dict = load_sentiment_models(load_mode=language_mode)
                     
                     if models_dict and (models_dict.get('en') or models_dict.get('id')):
-                        # Predict sentiment with multi-language support
-                        with st.spinner("🤖 Analyzing sentiment with multi-language models..."):
+                        # Predict sentiment with selected language model
+                        with st.spinner(f"🤖 Analyzing sentiment with {language_option} model..."):
                             predictions, probabilities, detected_langs = predict_sentiment_batch(
                                 reviews_df['review_text'].tolist(),
                                 models_dict,
@@ -312,11 +308,6 @@ if st.session_state.reviews_df is None:
                             )
                             reviews_df['predicted_sentiment'] = predictions
                             reviews_df['detected_language'] = detected_langs
-                            
-                            # Display language distribution
-                            lang_counts = pd.Series(detected_langs).value_counts()
-                            lang_display = " | ".join([f"{lang.upper()}: {count}" for lang, count in lang_counts.items()])
-                            st.info(f"🌐 Detected Languages: {lang_display}")
                             
                             # Clear GPU memory after sentiment analysis
                             gc.collect()

@@ -15,7 +15,6 @@ from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
 from rapidfuzz import fuzz
 import re
-from langdetect import detect, LangDetectException
 import gc  # Garbage collection for memory management
 
 # Base path configuration - use script directory
@@ -401,86 +400,50 @@ def load_sentiment_models(load_mode='auto'):
         return None
 
 
-def detect_language(text):
+def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id'):
     """
-    Detect language of text using langdetect.
-    
-    Args:
-        text (str): Input text
-        
-    Returns:
-        str: Language code ('en', 'id', or 'unknown')
-    """
-    try:
-        if not text or len(text.strip()) < 10:
-            return 'unknown'
-        lang = detect(text)
-        # Map to our supported languages
-        if lang == 'en':
-            return 'en'
-        elif lang == 'id':
-            return 'id'
-        else:
-            return 'unknown'
-    except LangDetectException:
-        return 'unknown'
-
-
-def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='auto'):  # Reduced batch size
-    """
-    Predict sentiment for a batch of texts with multi-language support.
+    Predict sentiment for a batch of texts.
     
     Args:
         texts (list): List of review texts
         models_dict (dict): Dictionary containing models for different languages
         batch_size (int): Batch size for inference (reduced to 16 to save memory)
-        language_mode (str): 'auto', 'en', or 'id'
+        language_mode (str): 'en' or 'id' (no auto-detect)
         
     Returns:
         tuple: (predictions, probabilities, detected_languages)
     """
     if not models_dict:
-        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['unknown'] * len(texts)
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
     
     device = models_dict['device']
     all_predictions = []
     all_probabilities = []
-    detected_languages = []
     
     label_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
     
     try:
-        for text in texts:
-            # Detect language or use specified mode
-            if language_mode == 'auto':
-                lang = detect_language(text)
-                # Default to Indonesian if unknown
-                if lang == 'unknown':
-                    lang = 'id' if models_dict.get('id') else 'en'
+        # Select model based on language_mode
+        model_info = models_dict.get(language_mode)
+        if not model_info:
+            # Fallback: use any available model
+            if models_dict.get('id'):
+                model_info = models_dict['id']
+            elif models_dict.get('en'):
+                model_info = models_dict['en']
             else:
-                lang = language_mode
+                return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
+        
+        model = model_info['model']
+        tokenizer = model_info['tokenizer']
+        
+        # Process in batches
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
             
-            detected_languages.append(lang)
-            
-            # Select appropriate model
-            model_info = models_dict.get(lang)
-            if not model_info:
-                # Fallback: use any available model
-                if models_dict.get('id'):
-                    model_info = models_dict['id']
-                elif models_dict.get('en'):
-                    model_info = models_dict['en']
-                else:
-                    all_predictions.append('Neutral')
-                    all_probabilities.append([0.0, 1.0, 0.0])
-                    continue
-            
-            model = model_info['model']
-            tokenizer = model_info['tokenizer']
-            
-            # Tokenize single text
+            # Tokenize batch
             inputs = tokenizer(
-                text,
+                batch_texts,
                 padding=True,
                 truncation=True,
                 max_length=128,
@@ -495,19 +458,22 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='au
                 outputs = model(**inputs)
                 logits = outputs.logits
                 probs = torch.softmax(logits, dim=-1)
-                prediction = torch.argmax(logits, dim=-1).item()
+                predictions = torch.argmax(logits, dim=-1)
             
-            # Convert to label
-            label = label_map[prediction]
-            prob = probs[0].cpu().numpy()
-            
-            all_predictions.append(label)
-            all_probabilities.append(prob)
+            # Convert to labels
+            for j in range(len(batch_texts)):
+                label = label_map[predictions[j].item()]
+                prob = probs[j].cpu().numpy()
+                all_predictions.append(label)
+                all_probabilities.append(prob)
+        
+        # All texts use same language
+        detected_languages = [language_mode] * len(texts)
         
         return all_predictions, all_probabilities, detected_languages
     except Exception as e:
         st.error(f"Error in sentiment prediction: {str(e)}")
-        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), ['unknown'] * len(texts)
+        return ['Neutral'] * len(texts), [[0.0, 1.0, 0.0]] * len(texts), [language_mode] * len(texts)
 
 
 # =============================================================================
