@@ -300,7 +300,7 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                         
                         with c_txt:
                             title = app['title']
-                            max_title_len = 15
+                            max_title_len = 12
                             display_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
                             st.markdown(f"**{display_title}**", help=title)
                             
