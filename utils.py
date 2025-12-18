@@ -537,12 +537,24 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         tuple: (topics, topic_model, doc_topics)
     """
     try:
+        # Validate input
+        if not texts or len(texts) == 0:
+            st.warning("⚠️ No texts provided for topic modeling")
+            return None, None, None
+            
         if len(texts) < min_topic_size:
-            st.warning("Not enough reviews for topic modeling")
+            st.warning(f"⚠️ Not enough reviews for topic modeling (need at least {min_topic_size}, got {len(texts)})")
             return None, None, None
         
         # Preprocess texts
         cleaned_texts = preprocess_for_topics(texts)
+        
+        # Filter out empty texts
+        cleaned_texts = [t for t in cleaned_texts if t and len(t.strip()) > 5]
+        
+        if len(cleaned_texts) < min_topic_size:
+            st.warning(f"⚠️ Not enough valid texts after preprocessing (need at least {min_topic_size}, got {len(cleaned_texts)})")
+            return None, None, None
         
         # Indonesian stopwords for better topic modeling
         indonesian_stopwords = [
@@ -560,10 +572,12 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         vectorizer_model = CountVectorizer(
             stop_words=indonesian_stopwords,
             min_df=2,
-            ngram_range=(1, 2)
+            ngram_range=(1, 2),
+            max_features=1000
         )
         
         # Initialize BERTopic with multilingual embedding model for Indonesian support
+        st.info("🔍 Initializing topic model with multilingual embeddings...")
         topic_model = BERTopic(
             embedding_model='paraphrase-multilingual-MiniLM-L12-v2',  # Supports Indonesian
             vectorizer_model=vectorizer_model,
@@ -574,15 +588,26 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         )
         
         # Fit model
-        with st.spinner('Analyzing topics...'):
-            topics, _ = topic_model.fit_transform(cleaned_texts)
+        st.info(f"📊 Fitting topic model on {len(cleaned_texts)} reviews...")
+        topics, _ = topic_model.fit_transform(cleaned_texts)
         
         # Get topic info
         topic_info = topic_model.get_topic_info()
         
+        # Check if topics were found
+        unique_topics = len([t for t in set(topics) if t != -1])
+        if unique_topics == 0:
+            st.warning("⚠️ No topics could be extracted. Reviews might be too similar or too short.")
+            return None, None, None
+        
+        st.success(f"✅ Found {unique_topics} topics!")
         return topics, topic_model, topic_info
+        
     except Exception as e:
-        st.error(f"Error in topic modeling: {str(e)}")
+        st.error(f"❌ Error in topic modeling: {str(e)}")
+        st.error(f"Error type: {type(e).__name__}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
         return None, None, None
 
 

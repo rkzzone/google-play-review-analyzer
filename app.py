@@ -319,13 +319,20 @@ if st.session_state.reviews_df is None:
                         # Generate topics
                         with st.spinner("📊 Discovering topics..."):
                             topics, topic_model, topic_info = generate_topics(
-                                reviews_df['review_text'].tolist()
+                                reviews_df['review_text'].tolist(),
+                                min_topic_size=max(5, len(reviews_df) // 20)  # Adaptive min_topic_size
                             )
                             
-                            if topics is not None:
+                            if topics is not None and topic_model is not None:
                                 reviews_df['topic'] = topics
                                 st.session_state.topic_model = topic_model
                                 st.session_state.topic_labels = get_topic_labels(topic_model, topic_info)
+                                st.success("✅ Topic modeling complete!")
+                            else:
+                                st.warning("⚠️ Topic modeling skipped or failed. Continuing with sentiment analysis only...")
+                                reviews_df['topic'] = -1  # Assign all to "other" topic
+                                st.session_state.topic_model = None
+                                st.session_state.topic_labels = {}
                         
                         # Store in session state
                         st.session_state.reviews_df = reviews_df
@@ -584,7 +591,16 @@ else:
             else:
                 st.info("No reviews available for this topic")
     else:
-        st.info("Topic modeling data not available")
+        st.info("💡 Topic modeling data not available. This can happen when:")
+        st.markdown("""
+        - Reviews are too few (need at least 10-20 reviews)
+        - Reviews are too similar to each other
+        - Text preprocessing removed too much content
+        
+        **Try:**
+        - Scraping more reviews (increase count or date range)
+        - Using a different app with more diverse reviews
+        """)
     
     st.markdown("---")
     
