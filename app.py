@@ -353,29 +353,27 @@ else:
         avg_rating = df['rating'].mean()
         st.metric(
             label="Avg Rating",
-            value=f"{avg_rating:.2f} ⭐",
-            delta=f"{avg_rating - 3:.2f} vs baseline (3.0)",
-            help="Perbandingan dengan rating baseline 3.0 (rating tengah dari skala 1-5)"
+            value=f"{avg_rating:.2f} ⭐"
         )
     
     with col3:
         sentiment_counts = df['predicted_sentiment'].value_counts()
         pos_pct = (sentiment_counts.get('Positive', 0) / len(df)) * 100
+        neu_pct = (sentiment_counts.get('Neutral', 0) / len(df)) * 100
+        neg_pct = (sentiment_counts.get('Negative', 0) / len(df)) * 100
+        
         if pos_pct >= 50:
             net_sentiment = "Positive"
-            delta_color = "normal"
         elif pos_pct >= 30:
             net_sentiment = "Neutral"
-            delta_color = "off"
         else:
             net_sentiment = "Negative"
-            delta_color = "inverse"
         
         st.metric(
             label="Net Sentiment",
             value=net_sentiment,
-            delta=f"{pos_pct:.1f}% Positive",
-            help="Sentiment mayoritas berdasarkan distribusi Positive/Neutral/Negative"
+            delta=None,
+            help=f"Distribusi: Positive {pos_pct:.1f}% | Neutral {neu_pct:.1f}% | Negative {neg_pct:.1f}%"
         )
     
     with col4:
