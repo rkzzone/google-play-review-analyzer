@@ -330,16 +330,31 @@ def load_sentiment_model():
     Load the fine-tuned RoBERTa model and tokenizer.
     Uses caching to load only once.
     
+    Tries to load from local path first, then falls back to Hugging Face Hub.
+    
     Returns:
         tuple: (model, tokenizer, device)
     """
     try:
-        if not os.path.exists(MODEL_PATH):
-            st.error(f"Model not found at {MODEL_PATH}. Please train the model first.")
-            return None, None, None
-        
-        tokenizer = RobertaTokenizer.from_pretrained(MODEL_PATH)
-        model = RobertaForSequenceClassification.from_pretrained(MODEL_PATH)
+        # Try local path first (for local development)
+        if os.path.exists(MODEL_PATH):
+            st.info("Loading model from local path...")
+            tokenizer = RobertaTokenizer.from_pretrained(MODEL_PATH)
+            model = RobertaForSequenceClassification.from_pretrained(MODEL_PATH)
+        else:
+            # Fallback: Load from Hugging Face Hub (for Streamlit Cloud)
+            st.info("Local model not found. Loading from Hugging Face Hub...")
+            model_name = "rkzzone/roberta-sentiment-playstore"  # Replace with your HF model repo
+            
+            try:
+                tokenizer = RobertaTokenizer.from_pretrained(model_name)
+                model = RobertaForSequenceClassification.from_pretrained(model_name)
+            except Exception as hf_error:
+                # If HF model not found, use base model as fallback
+                st.warning(f"Hugging Face model not found. Using base roberta-base model instead.")
+                st.warning("⚠️ This model is NOT fine-tuned for sentiment analysis!")
+                tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+                model = RobertaForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
         
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device)
