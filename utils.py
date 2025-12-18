@@ -535,6 +535,7 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         
     Returns:
         tuple: (topics, topic_model, doc_topics)
+            topics: list of same length as input texts, -1 for filtered texts
     """
     try:
         # Validate input
@@ -546,11 +547,22 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
             st.warning(f"⚠️ Not enough reviews for topic modeling (need at least {min_topic_size}, got {len(texts)})")
             return None, None, None
         
-        # Preprocess texts
-        cleaned_texts = preprocess_for_topics(texts)
+        # Preprocess texts and keep track of valid indices
+        cleaned_texts = []
+        valid_indices = []
         
-        # Filter out empty texts
-        cleaned_texts = [t for t in cleaned_texts if t and len(t.strip()) > 5]
+        for idx, text in enumerate(texts):
+            # Convert to lowercase
+            cleaned = text.lower()
+            # Remove special characters but keep spaces
+            cleaned = re.sub(r'[^a-z\s]', '', cleaned)
+            # Remove extra spaces
+            cleaned = ' '.join(cleaned.split())
+            
+            # Only keep if text is meaningful after cleaning
+            if cleaned and len(cleaned.strip()) > 5:
+                cleaned_texts.append(cleaned)
+                valid_indices.append(idx)
         
         if len(cleaned_texts) < min_topic_size:
             st.warning(f"⚠️ Not enough valid texts after preprocessing (need at least {min_topic_size}, got {len(cleaned_texts)})")
@@ -589,19 +601,25 @@ def generate_topics(texts, n_topics=10, min_topic_size=10):
         
         # Fit model
         st.info(f"📊 Fitting topic model on {len(cleaned_texts)} reviews...")
-        topics, _ = topic_model.fit_transform(cleaned_texts)
+        fitted_topics, _ = topic_model.fit_transform(cleaned_texts)
         
         # Get topic info
         topic_info = topic_model.get_topic_info()
         
         # Check if topics were found
-        unique_topics = len([t for t in set(topics) if t != -1])
+        unique_topics = len([t for t in set(fitted_topics) if t != -1])
         if unique_topics == 0:
             st.warning("⚠️ No topics could be extracted. Reviews might be too similar or too short.")
             return None, None, None
         
+        # Map fitted topics back to original indices
+        # All texts get -1 (outlier) by default, valid ones get their actual topic
+        all_topics = [-1] * len(texts)
+        for i, valid_idx in enumerate(valid_indices):
+            all_topics[valid_idx] = fitted_topics[i]
+        
         st.success(f"✅ Found {unique_topics} topics!")
-        return topics, topic_model, topic_info
+        return all_topics, topic_model, topic_info
         
     except Exception as e:
         st.error(f"❌ Error in topic modeling: {str(e)}")
