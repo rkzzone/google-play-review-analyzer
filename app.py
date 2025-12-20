@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import os
 import sys
 import gc  # Memory management
+import time
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -442,7 +443,7 @@ if st.session_state.reviews_df is not None:
             margin=dict(l=50, r=50, t=40, b=40)  # Increased margins to prevent label cutoff
         )
         
-        st.plotly_chart(fig_donut, use_container='stretch')
+        st.plotly_chart(fig_donut, use_container_width=True)
     
     with col_right:
         # Timeline trend with dual axis - adaptive frequency
@@ -503,7 +504,7 @@ if st.session_state.reviews_df is not None:
                 margin=dict(l=20, r=20, t=40, b=20)
             )
             
-            st.plotly_chart(fig_timeline, use_container='stretch')
+            st.plotly_chart(fig_timeline, use_container_width=True)
         else:
             st.info("Not enough data for timeline visualization")
     
@@ -553,7 +554,7 @@ if st.session_state.reviews_df is not None:
                 margin=dict(l=20, r=20, t=40, b=20)
             )
             
-            st.plotly_chart(fig_topics, use_container='stretch')
+            st.plotly_chart(fig_topics, use_container_width=True)
         
         with col_right:
             st.markdown("#### 💬 Representative Reviews")
@@ -658,7 +659,7 @@ if st.session_state.reviews_df is not None:
                     margin=dict(l=20, r=20, t=10, b=20)
                 )
                 
-                st.plotly_chart(fig_version, use_container='stretch')
+                st.plotly_chart(fig_version, use_container_width=True)
             else:
                 st.info("No version data available")
         else:
@@ -694,7 +695,7 @@ if st.session_state.reviews_df is not None:
                     margin=dict(l=20, r=20, t=20, b=20)
                 )
                 
-                st.plotly_chart(fig_ngrams, use_container='stretch')
+                st.plotly_chart(fig_ngrams, use_container_width=True)
             else:
                 st.info("Not enough data for n-gram analysis")
         else:
