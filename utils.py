@@ -11,10 +11,6 @@ import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from google_play_scraper import app, search, Sort, reviews
-import nltk
-from nltk.corpus import stopwords
-from gensim import corpora
-from gensim.models.coherencemodel import CoherenceModel
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer

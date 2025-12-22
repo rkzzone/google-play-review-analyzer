@@ -17,8 +17,6 @@ torch>=2.0.0
 bertopic>=0.16.0
 scikit-learn>=1.3.0
 sentence-transformers>=2.2.0
-nltk>=3.8.0
-gensim>=4.3.0
 
 # Training Dependencies
 datasets>=2.16.0
