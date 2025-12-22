@@ -188,8 +188,14 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                         min_value=50,
                         max_value=5000,
                         value=500,
-                        step=50
+                        step=50,
+                        help="Untuk performa terbaik, gunakan <= 1000 reviews. Dataset besar akan memakan waktu lebih lama."
                     )
+                    
+                    # Add warning for large datasets
+                    if review_count > 1000:
+                        st.warning("⚠️ **Dataset besar terdeteksi!** Processing akan memakan waktu 5-10 menit. Untuk hasil cepat, gunakan <= 1000 reviews.")
+                    
                     start_date = None
                     end_date = None
                 else:
@@ -263,7 +269,8 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                         predictions, probabilities, detected_langs = predict_sentiment_batch(
                             reviews_df['review_text'].tolist(),
                             models_dict,
-                            language_mode='id'
+                            language_mode='id',
+                            show_progress=True
                         )
                         reviews_df['predicted_sentiment'] = predictions
                         reviews_df['detected_language'] = detected_langs
@@ -281,7 +288,8 @@ if 'search_results' in st.session_state and st.session_state.search_results:
                     with st.spinner("Sedang mengelompokkan topik pembicaraan..."):
                         topics, topic_model, topic_info = generate_topics(
                             reviews_df['review_text'].tolist(),
-                            min_topic_size=max(5, len(reviews_df) // 20)
+                            min_topic_size=max(5, len(reviews_df) // 20),
+                            show_progress=True
                         )
                     
                     if topics is not None and topic_model is not None:
@@ -518,7 +526,7 @@ if st.session_state.reviews_df is not None:
     st.subheader("🗂️ Topic Modeling & Customer Voice")
     
     if 'topic' in df.columns and st.session_state.topic_labels and len(st.session_state.topic_labels) > 0:
-        # Topic selector
+        # Topic selector - EXCLUDE OUTLIERS (topic -1)
         topic_options = ["All Topics"] + [f"{k}: {v}" for k, v in st.session_state.topic_labels.items() if k != -1]
         selected_topic_display = st.selectbox("Select Topic to Explore:", topic_options)
         
@@ -526,6 +534,7 @@ if st.session_state.reviews_df is not None:
         
         with col_left:
             # Topic frequency bar chart (sorted descending, top to bottom)
+            # INCLUDE OUTLIERS (show all topics including -1)
             topic_counts = df['topic'].value_counts().head(10)
             topic_labels_list = [st.session_state.topic_labels.get(t, f"Topic {t}") for t in topic_counts.index]
             
