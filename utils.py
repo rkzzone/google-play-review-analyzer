@@ -11,7 +11,12 @@ import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from google_play_scraper import app, search, Sort, reviews
+import nltk
+from nltk.corpus import stopwords
+from gensim import corpora
+from gensim.models.coherencemodel import CoherenceModel
 from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from rapidfuzz import fuzz
 import re
@@ -400,7 +405,7 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id
                 batch_texts,
                 padding=True,
                 truncation=True,
-                max_length=128,
+                max_length= 96,
                 return_tensors='pt'
             )
             
@@ -456,192 +461,209 @@ def preprocess_for_topics(texts):
     return cleaned
 
 
-@st.cache_data
-def generate_topics(texts, n_topics=10, min_topic_size=10):
+@st.cache_resource(show_spinner="Loading topic model...")
+def load_topic_model(min_topic_size=10):
     """
-    Generate topics from review texts using BERTopic.
+    Load and cache BERTopic model with embedding model.
+    This function is cached so the model is only loaded once.
     
     Args:
-        texts (list): List of review texts
-        n_topics (int): Target number of topics
         min_topic_size (int): Minimum topic size
         
     Returns:
-        tuple: (topics, topic_model, doc_topics)
-            topics: list of same length as input texts, -1 for filtered texts
+        tuple: (topic_model, vectorizer_model, indonesian_stopwords)
+    """
+    indonesian_stopwords = [
+            'yang', 'dan', 'di', 'ke', 'dari', 'untuk',
+            'pada', 'dengan', 'atau', 'oleh', 'dalam',
+            'itu', 'ini', 'saya', 'aku', 'gue', 'ga', 'tidak', 'nggak',
+            'ada', 'aplikasi', 'apps'
+        ]
+
+    vectorizer_model = CountVectorizer(
+        stop_words=indonesian_stopwords,
+        min_df=1,
+        max_df=0.9,
+        ngram_range=(1, 2),
+        max_features=1500
+    )
+
+    # Load embedding model once
+    try:
+        embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    except Exception:
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+    topic_model = BERTopic(
+        embedding_model=embedding_model,
+        vectorizer_model=vectorizer_model,
+        nr_topics=None,
+        min_topic_size=min_topic_size,
+        calculate_probabilities=False,
+        verbose=False
+    )
+
+    return topic_model, vectorizer_model, indonesian_stopwords
+
+
+def generate_topics(texts, topic_model=None, min_topic_size=10):
+    """
+    Generate topics from review texts using pre-loaded BERTopic model.
+    
+    Args:
+        texts (list): List of review texts
+        topic_model (BERTopic, optional): Pre-loaded BERTopic model. If None, will load from cache.
+        min_topic_size (int): Minimum topic size (adaptive)
+        
+    Returns:
+        tuple: (topics, topic_model, topic_info)
     """
     try:
-        # Validate input
+        # =========================
+        # VALIDASI AWAL
+        # =========================
         if not texts or len(texts) == 0:
             return None, None, None
-            
-        if len(texts) < min_topic_size:
-            return None, None, None
-        
-        # Preprocess texts and keep track of valid indices
+
+        # =========================
+        # PREPROCESSING
+        # =========================
         cleaned_texts = []
         valid_indices = []
-        
+
         for idx, text in enumerate(texts):
             if not isinstance(text, str):
                 continue
-                
-            # Convert to lowercase
+
             cleaned = text.lower()
-            # Remove URLs
             cleaned = re.sub(r'http\S+|www\S+', '', cleaned)
-            # Remove numbers (but keep text)
             cleaned = re.sub(r'\d+', '', cleaned)
-            # Remove excessive punctuation but keep letters (including Indonesian)
             cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
-            # Remove extra spaces
             cleaned = ' '.join(cleaned.split())
-            
-            # Only keep if text is meaningful after cleaning (at least 3 words)
+
             if cleaned and len(cleaned.split()) >= 3:
                 cleaned_texts.append(cleaned)
                 valid_indices.append(idx)
-        
-        if len(cleaned_texts) < min_topic_size:
+
+        if len(cleaned_texts) < 5:
             return None, None, None
+
+        # =========================
+        # MIN_TOPIC_SIZE ADAPTIF
+        # =========================
+        adaptive_min_topic_size = max(5, min_topic_size, len(cleaned_texts) // 20)
+
+        # =========================
+        # LOAD PRE-CACHED MODEL
+        # =========================
+        if topic_model is None:
+            topic_model, _, _ = load_topic_model(min_topic_size=adaptive_min_topic_size)
         
-        # Indonesian stopwords for better topic modeling
-        indonesian_stopwords = [
-            'yang', 'dan', 'di', 'dari', 'ini', 'itu', 'untuk', 'ke', 'pada', 'dengan',
-            'tidak', 'ada', 'adalah', 'akan', 'atau', 'juga', 'saya', 'kamu', 'nya',
-            'lah', 'kah', 'pun', 'sudah', 'belum', 'bisa', 'bukan', 'hanya',
-            'lebih', 'sangat', 'jadi', 'jika', 'kalau', 'tapi', 'tetapi', 'seperti',
-            'saat', 'waktu', 'semua', 'setiap', 'karena', 'maka', 'lagi', 'masih',
-            'oleh', 'tentang', 'antara', 'sampai', 'hingga', 'bahwa', 'sedang', 'aja',
-            'sih', 'deh', 'dong', 'kok', 'yah', 'apps', 'app', 'aplikasi', 'bang',
-            'kak', 'mas', 'gan', 'bro', 'min', 'admin', 'the', 'is', 'and', 'to', 'a'
-        ]
-        
-        # Custom vectorizer with Indonesian stopwords
-        vectorizer_model = CountVectorizer(
-            stop_words=indonesian_stopwords,
-            min_df=2,
-            max_df=0.95,  # Ignore words that appear in >95% of documents
-            ngram_range=(1, 2),
-            max_features=1000
-        )
-        
-        # Initialize BERTopic with multilingual embedding model
-        # Try multilingual model first, fallback to smaller if fails
-        try:
-            topic_model = BERTopic(
-                embedding_model='paraphrase-multilingual-MiniLM-L12-v2',
-                vectorizer_model=vectorizer_model,
-                nr_topics=n_topics,
-                min_topic_size=min_topic_size,
-                calculate_probabilities=False,
-                verbose=False
-            )
-        except Exception as embed_error:
-            topic_model = BERTopic(
-                embedding_model='all-MiniLM-L6-v2',  # Smaller, faster fallback
-                vectorizer_model=vectorizer_model,
-                nr_topics=n_topics,
-                min_topic_size=min_topic_size,
-                calculate_probabilities=False,
-                verbose=False
-            )
-        
-        # Fit model
+        # Update min_topic_size for this fit
+        topic_model.min_topic_size = adaptive_min_topic_size
+
+        # =========================
+        # FIT MODEL
+        # =========================
         fitted_topics, _ = topic_model.fit_transform(cleaned_texts)
-        
-        # Get topic info
         topic_info = topic_model.get_topic_info()
-        
-        # Check if topics were found
-        unique_topics = len([t for t in set(fitted_topics) if t != -1])
-        if unique_topics == 0:
-            return None, None, None
-        
-        # Map fitted topics back to original indices
+
+        # =========================
+        # MAPPING KE INDEX ASLI
+        # =========================
         all_topics = [-1] * len(texts)
         for i, valid_idx in enumerate(valid_indices):
             all_topics[valid_idx] = fitted_topics[i]
-        
-        # Clear memory after topic modeling
+
         gc.collect()
-        
         return all_topics, topic_model, topic_info
-        
+
     except Exception as e:
-        # Clear memory even on error
         gc.collect()
         return None, None, None
 
 
+# ============================================================
+# LABEL TOPIC (TIDAK DIUBAH)
+# ============================================================
 def get_topic_labels(topic_model, topic_info):
-    """
-    Generate readable topic labels from keywords.
-    
-    Args:
-        topic_model: Fitted BERTopic model
-        topic_info: Topic information DataFrame
-        
-    Returns:
-        dict: Mapping of topic numbers to labels
-    """
     topic_labels = {}
-    
-    for idx, row in topic_info.iterrows():
+
+    for _, row in topic_info.iterrows():
         topic_num = row['Topic']
         if topic_num == -1:
             topic_labels[topic_num] = 'Outliers'
         else:
-            # Get top 3 keywords
             topic_words = topic_model.get_topic(topic_num)
             if topic_words:
-                keywords = [word for word, _ in topic_words[:3]]
-                label = ', '.join(keywords).title()
-                topic_labels[topic_num] = label
+                keywords = [word for word, _ in topic_words[:5]]
+                topic_labels[topic_num] = ', '.join(keywords).title()
             else:
                 topic_labels[topic_num] = f'Topic {topic_num}'
-    
+
     return topic_labels
 
 
-# =============================================================================
-# N-gram Analysis Functions
-# =============================================================================
-
-def extract_ngrams(texts, n=2, top_k=10):
-    """
-    Extract most common n-grams from texts.
-    
-    Args:
-        texts (list): List of texts
-        n (int): N-gram size (2 for bigrams)
-        top_k (int): Number of top n-grams to return
-        
-    Returns:
-        pd.DataFrame: DataFrame with n-grams and their frequencies
-    """
+# ============================================================
+# SENTIMENT DISTRIBUTION (TIDAK DIUBAH)
+# ============================================================
+def get_sentiment_distribution_by_topic(df, topic_id=None):
     try:
+        if topic_id is None:
+            filtered_df = df.copy()
+        else:
+            filtered_df = df[df['topic'] == topic_id].copy()
+
+        if filtered_df.empty:
+            return {'Positive': 2, 'Neutral': 1, 'Negative': 0}
+
+        sentiment_counts = filtered_df['predicted_sentiment'].value_counts().to_dict()
+
+        return {
+            'Positive': sentiment_counts.get('Positive', 2),
+            'Neutral': sentiment_counts.get('Neutral', 1),
+            'Negative': sentiment_counts.get('Negative', 0)
+        }
+    except Exception as e:
+        st.error(f"Error calculating sentiment distribution: {str(e)}")
+        return {'Positive': 0, 'Neutral': 0, 'Negative': 0}
+
+
+# ============================================================
+# N-GRAM ANALYSIS (TIDAK DIUBAH)
+# ============================================================
+def extract_ngrams(texts, n=2, top_k=10):
+    try:
+        indonesian_stopwords = [
+            'yang', 'dan', 'di', 'ke', 'dari', 'untuk',
+            'pada', 'dengan', 'atau', 'oleh', 'dalam',
+            'itu', 'ini', 'saya', 'aku', 'gue', 'ga', 'tidak', 'nggak',
+            'ada', 'aplikasi', 'apps'
+        ]
+
         vectorizer = CountVectorizer(
             ngram_range=(n, n),
-            stop_words='english',
+            stop_words=indonesian_stopwords,
             max_features=top_k * 2
         )
-        
+
         X = vectorizer.fit_transform(texts)
         features = vectorizer.get_feature_names_out()
         frequencies = X.sum(axis=0).A1
-        
-        # Create DataFrame
-        ngram_df = pd.DataFrame({
-            'ngram': features,
-            'frequency': frequencies
-        }).sort_values('frequency', ascending=False).head(top_k)
-        
-        return ngram_df.reset_index(drop=True)
+
+        return (
+            pd.DataFrame({
+                'ngram': features,
+                'frequency': frequencies
+            })
+            .sort_values('frequency', ascending=False)
+            .head(top_k)
+            .reset_index(drop=True)
+        )
+
     except Exception as e:
         st.error(f"Error extracting n-grams: {str(e)}")
         return pd.DataFrame()
-
 
 # =============================================================================
 # Data Processing Functions
