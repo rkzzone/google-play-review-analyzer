@@ -369,15 +369,16 @@ def load_sentiment_models(load_mode='id'):
         return None
 
 
-def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id'):
+def predict_sentiment_batch(texts, models_dict, batch_size=32, language_mode='id', show_progress=False):
     """
-    Predict sentiment for Indonesian texts.
+    Predict sentiment for Indonesian texts with progress bar.
     
     Args:
         texts (list): List of review texts
         models_dict (dict): Dictionary containing Indonesian model
-        batch_size (int): Batch size for inference
+        batch_size (int): Batch size for inference (default 32 for better performance)
         language_mode (str): Always 'id' for Indonesian
+        show_progress (bool): Show progress bar for batch processing
         
     Returns:
         tuple: (predictions, probabilities, detected_languages)
@@ -396,16 +397,30 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id
         model = model_info['model']
         tokenizer = model_info['tokenizer']
         
+        # Calculate total batches for progress
+        total_batches = (len(texts) + batch_size - 1) // batch_size
+        
+        # Create progress bar if requested
+        progress_bar = st.progress(0) if show_progress else None
+        status_text = st.empty() if show_progress else None
+        
         # Process in batches
-        for i in range(0, len(texts), batch_size):
+        for batch_idx, i in enumerate(range(0, len(texts), batch_size)):
             batch_texts = texts[i:i + batch_size]
+            
+            # Update progress
+            if show_progress and progress_bar:
+                progress = (batch_idx + 1) / total_batches
+                progress_bar.progress(progress)
+                if status_text:
+                    status_text.text(f"Processing batch {batch_idx + 1}/{total_batches}...")
             
             # Tokenize batch
             inputs = tokenizer(
                 batch_texts,
                 padding=True,
                 truncation=True,
-                max_length= 96,
+                max_length=96,
                 return_tensors='pt'
             )
             
@@ -425,6 +440,20 @@ def predict_sentiment_batch(texts, models_dict, batch_size=16, language_mode='id
                 prob = probs[j].cpu().numpy()
                 all_predictions.append(label)
                 all_probabilities.append(prob)
+            
+            # Clear memory periodically
+            if batch_idx % 10 == 0:
+                del inputs, outputs, logits, probs, predictions
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                gc.collect()
+        
+        # Clear progress indicators
+        if show_progress:
+            if progress_bar:
+                progress_bar.empty()
+            if status_text:
+                status_text.empty()
         
         # All texts are Indonesian
         detected_languages = ['id'] * len(texts)
@@ -461,14 +490,26 @@ def preprocess_for_topics(texts):
     return cleaned
 
 
-@st.cache_resource(show_spinner="Loading topic model...")
-def load_topic_model(min_topic_size=10):
+@st.cache_resource(show_spinner="Loading embedding model...")
+def load_embedding_model():
     """
-    Load and cache BERTopic model with embedding model.
-    This function is cached so the model is only loaded once.
+    Load and cache sentence transformer embedding model.
+    This is the heavy part, so we cache it separately.
+    """
+    try:
+        embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    except Exception:
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return embedding_model
+
+
+def load_topic_model(min_topic_size=10, n_docs=None):
+    """
+    Load BERTopic model with embedding model (NOT CACHED - parameters vary per call).
     
     Args:
         min_topic_size (int): Minimum topic size
+        n_docs (int, optional): Number of documents (for adaptive min_df/max_df)
         
     Returns:
         tuple: (topic_model, vectorizer_model, indonesian_stopwords)
@@ -477,28 +518,50 @@ def load_topic_model(min_topic_size=10):
             'yang', 'dan', 'di', 'ke', 'dari', 'untuk',
             'pada', 'dengan', 'atau', 'oleh', 'dalam',
             'itu', 'ini', 'saya', 'aku', 'gue', 'ga', 'tidak', 'nggak',
-            'ada', 'aplikasi', 'apps'
+            'ada', 'aplikasi', 'apps', 'apk'
         ]
+
+    # Simple min_df and max_df - consistent for all datasets
+    min_df_val = 2     # Accept terms that appear in at least 2 documents
+    max_df_val = 0.95   # Filter terms that appear in more than 95% of documents
 
     vectorizer_model = CountVectorizer(
         stop_words=indonesian_stopwords,
-        min_df=1,
-        max_df=0.9,
+        min_df=min_df_val,
+        max_df=max_df_val,
         ngram_range=(1, 2),
         max_features=1500
     )
 
-    # Load embedding model once
-    try:
-        embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    except Exception:
-        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    # Load embedding model once (CACHED)
+    embedding_model = load_embedding_model()
+
+    # Configure UMAP for better topic separation
+    from umap import UMAP
+    umap_model = UMAP(
+        n_neighbors=15,       # Balance between local and global structure
+        n_components=5,       # Reduce to 5 dimensions
+        min_dist=0.0,         # Tighter clusters
+        metric='cosine',      # Good for text embeddings
+        random_state=42
+    )
+    
+    # Configure HDBSCAN for better clustering (reduce outliers and overlap)
+    from hdbscan import HDBSCAN
+    hdbscan_model = HDBSCAN(
+        min_cluster_size=min_topic_size,
+        min_samples=max(7, min_topic_size // 2),  # Stricter to reduce overlap
+        metric='euclidean',
+        cluster_selection_method='eom',  # Excess of Mass - better for varied cluster sizes
+        prediction_data=True
+    )
 
     topic_model = BERTopic(
         embedding_model=embedding_model,
+        umap_model=umap_model,
+        hdbscan_model=hdbscan_model,
         vectorizer_model=vectorizer_model,
-        nr_topics=None,
-        min_topic_size=min_topic_size,
+        nr_topics=None,       # Auto-detect number of topics
         calculate_probabilities=False,
         verbose=False
     )
@@ -506,14 +569,15 @@ def load_topic_model(min_topic_size=10):
     return topic_model, vectorizer_model, indonesian_stopwords
 
 
-def generate_topics(texts, topic_model=None, min_topic_size=10):
+def generate_topics(texts, topic_model=None, min_topic_size=10, show_progress=False):
     """
-    Generate topics from review texts using pre-loaded BERTopic model.
+    Generate topics from review texts using pre-loaded BERTopic model with optimizations.
     
     Args:
         texts (list): List of review texts
         topic_model (BERTopic, optional): Pre-loaded BERTopic model. If None, will load from cache.
         min_topic_size (int): Minimum topic size (adaptive)
+        show_progress (bool): Show progress indicators
         
     Returns:
         tuple: (topics, topic_model, topic_info)
@@ -523,14 +587,22 @@ def generate_topics(texts, topic_model=None, min_topic_size=10):
         # VALIDASI AWAL
         # =========================
         if not texts or len(texts) == 0:
+            print("⚠️ Topic modeling: No texts provided")
             return None, None, None
+        
+        # Log input untuk debugging
+        print(f"\n📊 Topic Modeling Started: {len(texts)} reviews")
 
         # =========================
-        # PREPROCESSING
+        # PREPROCESSING (Optimized)
         # =========================
+        if show_progress:
+            st.info("Preprocessing texts...")
+        
         cleaned_texts = []
         valid_indices = []
 
+        # Batch preprocessing for efficiency
         for idx, text in enumerate(texts):
             if not isinstance(text, str):
                 continue
@@ -541,30 +613,62 @@ def generate_topics(texts, topic_model=None, min_topic_size=10):
             cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
             cleaned = ' '.join(cleaned.split())
 
-            if cleaned and len(cleaned.split()) >= 3:
+            if cleaned and len(cleaned.split()) >= 2:  # Min 2 words (balance quality vs coverage)
                 cleaned_texts.append(cleaned)
                 valid_indices.append(idx)
+        
+        # Log preprocessing results
+        print(f"✅ Preprocessing complete: {len(cleaned_texts)}/{len(texts)} valid ({len(cleaned_texts)/len(texts)*100:.1f}%)")
 
-        if len(cleaned_texts) < 5:
+        # Need at least sufficient reviews for meaningful topics
+        # More strict threshold to ensure quality
+        if len(texts) < 100:
+            min_required = max(15, len(texts) // 5)  # 20% for small datasets
+        else:
+            min_required = max(30, len(texts) // 8)  # ~12% for larger datasets, min 30
+        
+        min_required = min(min_required, 150)  # Cap at 150
+        
+        if len(cleaned_texts) < min_required:
+            # Log to console for debugging
+            print("\n" + "="*80)
+            print("⚠️ TOPIC MODELING SKIPPED - Not enough valid reviews")
+            print("="*80)
+            print(f"Input reviews: {len(texts)}")
+            print(f"Valid after preprocessing: {len(cleaned_texts)}")
+            print(f"Required minimum: {min_required}")
+            print(f"Shortfall: {min_required - len(cleaned_texts)} reviews")
+            print("="*80 + "\n")
+            
+            st.warning(f"⚠️ Only {len(cleaned_texts)} valid reviews after preprocessing (need {min_required}). Try more reviews.")
             return None, None, None
 
         # =========================
-        # MIN_TOPIC_SIZE ADAPTIF
+        # MIN_TOPIC_SIZE - FIXED at 25 (simple & consistent)
         # =========================
-        adaptive_min_topic_size = max(5, min_topic_size, len(cleaned_texts) // 20)
+        adaptive_min_topic_size = 25  # Fixed for all dataset sizes
 
         # =========================
         # LOAD PRE-CACHED MODEL
         # =========================
+        if show_progress:
+            st.info(f"Loading topic model (processing {len(cleaned_texts)} reviews)...")
+        
         if topic_model is None:
-            topic_model, _, _ = load_topic_model(min_topic_size=adaptive_min_topic_size)
+            topic_model, _, _ = load_topic_model(
+                min_topic_size=adaptive_min_topic_size,
+                n_docs=len(cleaned_texts)  # Pass dataset size for adaptive min_df/max_df
+            )
         
         # Update min_topic_size for this fit
         topic_model.min_topic_size = adaptive_min_topic_size
 
         # =========================
-        # FIT MODEL
+        # FIT MODEL (with progress indicator)
         # =========================
+        if show_progress:
+            st.info("Generating topics (this may take a moment)...")
+        
         fitted_topics, _ = topic_model.fit_transform(cleaned_texts)
         topic_info = topic_model.get_topic_info()
 
@@ -575,10 +679,37 @@ def generate_topics(texts, topic_model=None, min_topic_size=10):
         for i, valid_idx in enumerate(valid_indices):
             all_topics[valid_idx] = fitted_topics[i]
 
+        # Memory cleanup
+        del cleaned_texts, valid_indices, fitted_topics
         gc.collect()
+        
         return all_topics, topic_model, topic_info
 
     except Exception as e:
+        import traceback
+        error_msg = f"Topic modeling error: {str(e)}"
+        
+        # Print to console/terminal for debugging
+        print("\n" + "="*80)
+        print("❌ TOPIC MODELING ERROR DETECTED")
+        print("="*80)
+        print(f"Error: {str(e)}")
+        print(f"Input texts: {len(texts) if texts else 0}")
+        print(f"Cleaned texts: {len(cleaned_texts) if 'cleaned_texts' in locals() else 'N/A'}")
+        print(f"Min required: {min_required if 'min_required' in locals() else 'N/A'}")
+        print(f"Adaptive min_topic_size: {adaptive_min_topic_size if 'adaptive_min_topic_size' in locals() else 'N/A'}")
+        print("\nFull Traceback:")
+        print(traceback.format_exc())
+        print("="*80 + "\n")
+        
+        # Show in Streamlit UI
+        st.error(error_msg)
+        st.error(f"Debug: {len(texts) if texts else 0} input texts, cleaned: {len(cleaned_texts) if 'cleaned_texts' in locals() else 'N/A'}")
+        
+        # Expandable debug info in UI
+        with st.expander("🔍 Debug Info (click to expand)"):
+            st.code(traceback.format_exc())
+        
         gc.collect()
         return None, None, None
 
@@ -638,7 +769,7 @@ def extract_ngrams(texts, n=2, top_k=10):
             'yang', 'dan', 'di', 'ke', 'dari', 'untuk',
             'pada', 'dengan', 'atau', 'oleh', 'dalam',
             'itu', 'ini', 'saya', 'aku', 'gue', 'ga', 'tidak', 'nggak',
-            'ada', 'aplikasi', 'apps'
+            'ada', 'aplikasi', 'apps', 'apk'
         ]
 
         vectorizer = CountVectorizer(
@@ -1000,7 +1131,8 @@ def generate_pdf_with_charts(df, app_info, topic_labels):
         story.append(Paragraph("Top Discussion Topics", heading_style))
         story.append(Spacer(1, 0.2*inch))
         
-        topic_counts = df['topic'].value_counts().head(8)
+        # INCLUDE OUTLIERS (show all topics including -1 for complete picture)
+        topic_counts = df['topic'].value_counts().head(10)
         topic_data = [['Rank', 'Topic', 'Mentions', '% of Reviews']]
         
         for rank, (topic_num, count) in enumerate(topic_counts.items(), 1):
