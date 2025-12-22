@@ -27,6 +27,7 @@ from utils import (
     predict_sentiment_batch,
     generate_topics,
     get_topic_labels,
+    get_sentiment_distribution_by_topic,
     extract_ngrams,
     aggregate_by_date,
     filter_by_sentiment,
@@ -594,7 +595,69 @@ if st.session_state.reviews_df is not None:
     st.markdown("---")
     
     # =============================================================================
-    # Row 4: Technical Insights
+    # Row 4: Sentiment Distribution per Topic
+    # =============================================================================
+    
+    st.subheader("📊 Sentiment Distribution per Topic")
+    
+    if 'topic' in df.columns and st.session_state.topic_labels and len(st.session_state.topic_labels) > 0:
+        col_filter, col_chart = st.columns([2, 5])
+        
+        with col_filter:
+            # Topic selector with "All Topics" option
+            topic_options = ["All Topics"] + sorted([f"{k}: {v}" for k, v in st.session_state.topic_labels.items() if k != -1])
+            selected_topic_sentiment = st.selectbox(
+                "Select Topic:",
+                options=topic_options,
+                key="sentiment_topic_select",
+                help="Choose a topic to see its sentiment distribution"
+            )
+            
+            st.info("ℹ️ Select a topic to see the distribution of sentiments for that topic.")
+        
+        with col_chart:
+            # Extract topic ID from selection
+            if selected_topic_sentiment != "All Topics":
+                selected_topic_id = int(selected_topic_sentiment.split(":")[0])
+            else:
+                selected_topic_id = None
+            
+            # Get sentiment distribution for selected topic
+            sentiment_dist = get_sentiment_distribution_by_topic(df, selected_topic_id)
+            
+            # Create pie chart
+            if sum(sentiment_dist.values()) > 0:
+                colors_sentiment = {'Positive': '#2ecc71', 'Neutral': '#95a5a6', 'Negative': '#e74c3c'}
+                
+                fig_sentiment_pie = go.Figure(data=[go.Pie(
+                    labels=list(sentiment_dist.keys()),
+                    values=list(sentiment_dist.values()),
+                    hole=0.4,
+                    marker=dict(colors=[colors_sentiment.get(k, '#3498db') for k in sentiment_dist.keys()]),
+                    textinfo='label+percent+value',
+                    textposition='auto',
+                    hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                )])
+                
+                topic_title = "All Reviews" if selected_topic_sentiment == "All Topics" else selected_topic_sentiment.split(": ")[1]
+                fig_sentiment_pie.update_layout(
+                    title=f"Sentiment Distribution - {topic_title}",
+                    height=350,
+                    showlegend=True,
+                    legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.02),
+                    margin=dict(l=20, r=120, t=40, b=20)
+                )
+                
+                st.plotly_chart(fig_sentiment_pie, use_container_width=True)
+            else:
+                st.warning("No data available for the selected topic")
+    else:
+        st.info("💡 Topic modeling data not available. Sentiment distribution per topic cannot be displayed.")
+    
+    st.markdown("---")
+    
+    # =============================================================================
+    # Row 5: Technical Insights
     # =============================================================================
     
     st.subheader("🔧 Technical Insights")
@@ -704,7 +767,7 @@ if st.session_state.reviews_df is not None:
     st.markdown("---")
     
     # =============================================================================
-    # Row 5: Raw Data Explorer
+    # Row 6: Raw Data Explorer
     # =============================================================================
     
     st.subheader("📋 Raw Data Explorer")
