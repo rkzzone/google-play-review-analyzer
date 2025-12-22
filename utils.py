@@ -937,14 +937,9 @@ def generate_pdf_report(df, app_info, topic_labels):
         BytesIO: PDF file buffer
     """
     
-    # Check if custom template exists
-    template_path = os.path.join(BASE_PATH, 'templates', 'report_template.pdf')
-    use_template = os.path.exists(template_path) and PYPDF2_AVAILABLE
-    
-    if use_template:
-        return generate_pdf_with_template(df, app_info, topic_labels, template_path)
-    else:
-        return generate_pdf_with_charts(df, app_info, topic_labels)
+    # Use standard chart-based PDF generation
+    # Template-based generation (generate_pdf_with_template) not yet implemented
+    return generate_pdf_with_charts(df, app_info, topic_labels)
 
 
 def generate_pdf_with_charts(df, app_info, topic_labels):
