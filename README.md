@@ -153,14 +153,6 @@ Pastikan sudah menjalankan `training_sentiment.ipynb` atau download model dari r
 - Gunakan App ID yang valid
 - Coba aplikasi lain yang populer
 
-## 📝 License
-
-MIT License
-
-## 👤 Author
-
-Muhammad - NLP & AI Project
-
 ## 🙏 Acknowledgments
 
 - Hugging Face Transformers
